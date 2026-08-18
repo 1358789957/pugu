@@ -316,8 +316,8 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
     const startDelta = cur.startTimeSeconds - prev.startTimeSeconds;
     if (
       cur.pitchMidi === prev.pitchMidi &&
-      prev.durationSeconds < SHORT &&
-      cur.durationSeconds >= SHORT &&
+      prev.durationSeconds <= SHORT &&
+      cur.durationSeconds >= 0.22 &&
       startDelta > 0.12 &&
       startDelta < 0.32
     ) {
@@ -343,14 +343,14 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
       out.push(cloneNote(cur));
       continue;
     }
-    // Leftover 0.16–0.21s same-pitch chop after a real note. Drop it —
-    // absorbing extends prev and makes 1 2 1 look like a neighbor-return.
+    // Leftover same-pitch chop after a real note (0.16–0.28s, IOI < 0.42).
+    // Drop it — absorbing extends prev and makes 1 2 1 look like a neighbor-return.
     const leftoverChop =
       cur.pitchMidi === prev.pitchMidi &&
-      cur.durationSeconds < 0.24 &&
+      cur.durationSeconds < 0.3 &&
       prev.durationSeconds >= SHORT &&
       startDelta < 0.42 &&
-      gap < 0.18 &&
+      gap < 0.25 &&
       gap > -0.08;
     if (leftoverChop) {
       continue;
@@ -429,7 +429,7 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
       prev.amplitude = Math.max(prev.amplitude, cur.amplitude);
       continue;
     }
-    if (cur.pitchMidi === prev.pitchMidi && cur.durationSeconds < SHORT && startDelta <= 0.3) {
+    if (cur.pitchMidi === prev.pitchMidi && cur.durationSeconds < SHORT && startDelta < 0.32) {
       const end = Math.max(
         prev.startTimeSeconds + prev.durationSeconds,
         cur.startTimeSeconds + cur.durationSeconds,

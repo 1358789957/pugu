@@ -285,6 +285,44 @@ test("pickMelodyNotes merges a short leftover chop in a two-note same-pitch pair
   assert.equal(ones.length, 2);
 });
 
+test("pickMelodyNotes drops a 0.16s same-pitch leftover with a 0.21s gap before 6", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.36, durationSeconds: 0.16, pitchMidi: 72 }),
+    ev({ startTimeSeconds: 0.73, durationSeconds: 0.16, pitchMidi: 72 }),
+    ev({ startTimeSeconds: 1.03, durationSeconds: 0.27, pitchMidi: 72 }),
+    ev({ startTimeSeconds: 1.39, durationSeconds: 0.42, pitchMidi: 67 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [72, 72, 67],
+  );
+});
+
+test("pickMelodyNotes keeps four 7s and replaces a 0.16s leftover with the next 7", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.36, durationSeconds: 0.16, pitchMidi: 71 }),
+    ev({ startTimeSeconds: 0.73, durationSeconds: 0.5, pitchMidi: 71 }),
+    ev({ startTimeSeconds: 1.23, durationSeconds: 0.51, pitchMidi: 71 }),
+    ev({ startTimeSeconds: 1.74, durationSeconds: 0.16, pitchMidi: 71 }),
+    ev({ startTimeSeconds: 2.03, durationSeconds: 0.27, pitchMidi: 71 }),
+    ev({ startTimeSeconds: 2.39, durationSeconds: 0.51, pitchMidi: 67 }),
+  ];
+  const sevens = pickMelodyNotes(events).filter((n) => n.pitchMidi === 71);
+  assert.equal(sevens.length, 4);
+});
+
+test("pickMelodyNotes drops a leftover 7 after 7 before 6", () => {
+  const events = [
+    ev({ startTimeSeconds: 2.03, durationSeconds: 0.27, pitchMidi: 66 }),
+    ev({ startTimeSeconds: 2.38, durationSeconds: 0.35, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 2.73, durationSeconds: 0.3, pitchMidi: 66 }),
+    ev({ startTimeSeconds: 3.03, durationSeconds: 0.28, pitchMidi: 66 }),
+    ev({ startTimeSeconds: 3.41, durationSeconds: 0.38, pitchMidi: 64 }),
+  ];
+  const sevens = pickMelodyNotes(events).filter((n) => n.pitchMidi === 66);
+  assert.equal(sevens.length, 2);
+});
+
 test("pickMelodyNotes drops a leftover chop after a quarter before the next degree", () => {
   const events = [
     ev({ startTimeSeconds: 0.39, durationSeconds: 0.34, pitchMidi: 59 }),
