@@ -20,6 +20,7 @@ import {
   matchFirstPhrase,
   movableMajorToCFixed,
   publishedToScore,
+  scorePhrase,
   stripOctaveMarks,
 } from "../src/lib/melody/pop-phrase-fixtures.ts";
 import { HIRUMAWARI_OPENING_C, HIRUMAWARI_PHRASE2_C } from "../src/lib/melody/hirumawari-opening.ts";
@@ -84,6 +85,47 @@ test("ALIGN_SONGS is pop-only; published 首调 is source of truth", () => {
   assert.deepEqual([...HIRUMAWARI_PHRASE2_C], ["6", "7", "1", "1", "1", "1", "1", "7", "5", "1", "2", "1", "3"]);
   assert.deepEqual(movableMajorToCFixed(GAOBAI_QIQU_PUBLISHED, 11), GAOBAI_QIQU_C);
   assert.ok(matchFirstPhrase(["2", "1", "6", "1"], ["2", "1", "6"]));
+});
+
+test("scorePhrase is longest-prefix / expected_len with extra and missing", () => {
+  assert.deepEqual(scorePhrase(["1", "7", "1", "3", "4", "5"], ["1", "7", "1", "3", "4", "5"]), {
+    prefix: 6,
+    expectedLen: 6,
+    actualLen: 6,
+    accuracy: 1,
+    extra: 0,
+    missing: 0,
+    exact: true,
+  });
+  assert.deepEqual(scorePhrase(["1", "7", "1", "3", "4", "5", "2"], ["1", "7", "1", "3", "4", "5"]), {
+    prefix: 6,
+    expectedLen: 6,
+    actualLen: 7,
+    accuracy: 1,
+    extra: 1,
+    missing: 0,
+    exact: true,
+  });
+  assert.deepEqual(scorePhrase(["1", "7", "1", "4", "5"], ["1", "7", "1", "3", "4", "5"]), {
+    prefix: 3,
+    expectedLen: 6,
+    actualLen: 5,
+    accuracy: 0.5,
+    extra: 2,
+    missing: 3,
+    exact: false,
+  });
+  assert.deepEqual(scorePhrase(["1", "7"], ["1", "7", "1", "3", "4", "5"]), {
+    prefix: 2,
+    expectedLen: 6,
+    actualLen: 2,
+    accuracy: 2 / 6,
+    extra: 0,
+    missing: 4,
+    exact: false,
+  });
+  assert.equal(matchFirstPhrase(["1", "7", "1", "3", "4", "5", "2"], ["1", "7", "1", "3", "4", "5"]), true);
+  assert.equal(scorePhrase(["1", "7", "1", "3", "4", "5", "2"], ["1", "7", "1", "3", "4", "5"]).exact, true);
 });
 
 test("align-scores: pop synth 首调 + 昼回 dry vocal 固定调", async () => {

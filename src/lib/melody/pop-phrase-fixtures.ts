@@ -349,3 +349,40 @@ export function matchFirstPhrase(actual: readonly string[], want: readonly strin
   if (actual.length < want.length) return false;
   return want.every((d, i) => actual[i] === d);
 }
+
+export type PhraseScore = {
+  /** Longest leading run where actual[i] === expected[i]. */
+  prefix: number;
+  expectedLen: number;
+  actualLen: number;
+  /** prefix / expectedLen — extras after a full prefix do not lower this. */
+  accuracy: number;
+  /** Actual notes past the matched prefix (trailing extras, or everything after the first miss). */
+  extra: number;
+  /** Expected notes past the matched prefix. */
+  missing: number;
+  /** Full expected prefix is present — same as matchFirstPhrase. */
+  exact: boolean;
+};
+
+/** Note-level score used by the align accuracy report. */
+export function scorePhrase(actual: readonly string[], expected: readonly string[]): PhraseScore {
+  let prefix = 0;
+  const n = Math.min(actual.length, expected.length);
+  while (prefix < n && actual[prefix] === expected[prefix]) prefix++;
+  const expectedLen = expected.length;
+  const actualLen = actual.length;
+  return {
+    prefix,
+    expectedLen,
+    actualLen,
+    accuracy: expectedLen === 0 ? 1 : prefix / expectedLen,
+    extra: actualLen - prefix,
+    missing: expectedLen - prefix,
+    exact: prefix === expectedLen,
+  };
+}
+
+export function comparedScale(song: PopPhraseFixture): "C=1" | "首调" {
+  return song.liveAudio && song.cMajorFixed ? "C=1" : "首调";
+}

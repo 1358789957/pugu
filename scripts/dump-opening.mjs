@@ -57,22 +57,24 @@ function printHypothesis(h, got) {
   console.log("G     ", got.inG.join(" "));
 }
 
-const first = await transcribeHirumawariWindow(0, HIRUMAWARI_PHRASE_END + 0.4, HIRUMAWARI_PHRASE_START - 0.15, HIRUMAWARI_PHRASE_END);
-printLocked("第一句 1.45–6.40", first.inC, [...HIRUMAWARI_OPENING_C], first.midis, first.inG);
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const first = await transcribeHirumawariWindow(0, HIRUMAWARI_PHRASE_END + 0.4, HIRUMAWARI_PHRASE_START - 0.15, HIRUMAWARI_PHRASE_END);
+  printLocked("第一句 1.45–6.40", first.inC, [...HIRUMAWARI_OPENING_C], first.midis, first.inG);
 
-const second = await transcribeHirumawariWindow(
-  HIRUMAWARI_PHRASE2_START,
-  HIRUMAWARI_PHRASE2_END + 0.2,
-  HIRUMAWARI_PHRASE2_START,
-  HIRUMAWARI_PHRASE2_END,
-);
-printLocked("第二句 7.55–12.00", second.inC, [...HIRUMAWARI_PHRASE2_C], second.midis, second.inG);
+  const second = await transcribeHirumawariWindow(
+    HIRUMAWARI_PHRASE2_START,
+    HIRUMAWARI_PHRASE2_END + 0.2,
+    HIRUMAWARI_PHRASE2_START,
+    HIRUMAWARI_PHRASE2_END,
+  );
+  printLocked("第二句 7.55–12.00", second.inC, [...HIRUMAWARI_PHRASE2_C], second.midis, second.inG);
 
-console.log("\n--- after 第二句, before chorus ---");
-console.log(`path   tuner contour + wavelength-continue + BP merge`);
-console.log(`chorus ${HIRUMAWARI_CHORUS_LYRIC}  ~${HIRUMAWARI_CHORUS_START_HYPOTHESIS.toFixed(2)}s (hypothesis)`);
+  console.log("\n--- after 第二句, before chorus ---");
+  console.log(`path   tuner contour + wavelength-continue + BP merge`);
+  console.log(`chorus ${HIRUMAWARI_CHORUS_LYRIC}  ~${HIRUMAWARI_CHORUS_START_HYPOTHESIS.toFixed(2)}s (hypothesis)`);
 
-for (const h of HIRUMAWARI_VERSE_HYPOTHESES) {
-  const got = await transcribeHirumawariWindow(h.decodeStart, h.decodeEnd, h.start, h.end);
-  printHypothesis(h, got);
+  for (const h of HIRUMAWARI_VERSE_HYPOTHESES) {
+    const got = await transcribeHirumawariWindow(h.decodeStart, h.decodeEnd, h.start, h.end);
+    printHypothesis(h, got);
+  }
 }
