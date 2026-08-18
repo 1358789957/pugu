@@ -183,6 +183,36 @@ test("pickMelodyNotes drops flourish re-hits of the run pitch and the next degre
   );
 });
 
+test("pickMelodyNotes keeps a stepwise 1 2 1 1 pair before 2", () => {
+  const events = [
+    ev({ startTimeSeconds: 1.39, durationSeconds: 0.35, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 1.87, durationSeconds: 0.35, pitchMidi: 69 }),
+    ev({ startTimeSeconds: 2.39, durationSeconds: 0.34, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 2.73, durationSeconds: 0.16, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 3.02, durationSeconds: 0.21, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 3.39, durationSeconds: 0.35, pitchMidi: 69 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [67, 69, 67, 67, 69],
+  );
+});
+
+test("pickMelodyNotes keeps 1 2 1 and drops a late same-pitch echo before 3", () => {
+  const events = [
+    ev({ startTimeSeconds: 9.931, durationSeconds: 0.081, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 10.024, durationSeconds: 0.139, pitchMidi: 69 }),
+    ev({ startTimeSeconds: 10.245, durationSeconds: 0.174, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 10.95, durationSeconds: 0.34, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 11.29, durationSeconds: 0.19, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 11.639, durationSeconds: 0.279, pitchMidi: 71 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [67, 69, 67, 71],
+  );
+});
+
 test("pickMelodyNotes drops a late same-pitch trail before a third cadence", () => {
   const events = [
     ev({ startTimeSeconds: 9.93, durationSeconds: 0.1, pitchMidi: 67, amplitude: 0.5 }),
@@ -226,6 +256,44 @@ test("pickMelodyNotes keeps a lower neighbor between same-pitch quarters", () =>
   assert.deepEqual(
     pickMelodyNotes(events).map((n) => n.pitchMidi),
     [64, 64, 60, 64, 64, 60, 62],
+  );
+});
+
+test("pickMelodyNotes keeps two long same-pitch quarters before a lower neighbor", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.39, durationSeconds: 0.34, pitchMidi: 64 }),
+    ev({ startTimeSeconds: 0.73, durationSeconds: 0.5, pitchMidi: 64 }),
+    ev({ startTimeSeconds: 1.38, durationSeconds: 0.36, pitchMidi: 60 }),
+    ev({ startTimeSeconds: 1.9, durationSeconds: 0.33, pitchMidi: 64 }),
+    ev({ startTimeSeconds: 2.23, durationSeconds: 0.5, pitchMidi: 64 }),
+    ev({ startTimeSeconds: 2.89, durationSeconds: 0.43, pitchMidi: 60 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [64, 64, 60, 64, 64, 60],
+  );
+});
+
+test("pickMelodyNotes merges a short leftover chop in a two-note same-pitch pair", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.39, durationSeconds: 0.34, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 0.73, durationSeconds: 0.17, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 1.02, durationSeconds: 0.21, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 1.53, durationSeconds: 0.21, pitchMidi: 58 }),
+  ];
+  const ones = pickMelodyNotes(events).filter((n) => n.pitchMidi === 59);
+  assert.equal(ones.length, 2);
+});
+
+test("pickMelodyNotes drops a leftover chop after a quarter before the next degree", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.39, durationSeconds: 0.34, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 0.73, durationSeconds: 0.17, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 1.53, durationSeconds: 0.21, pitchMidi: 58 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [59, 58],
   );
 });
 

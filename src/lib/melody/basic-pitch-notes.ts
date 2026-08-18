@@ -220,7 +220,10 @@ function dropBassUnderMelody(notes: BasicPitchNote[]): BasicPitchNote[] {
       const overlap = Math.min(n1, o1) - Math.max(n0, o0);
       const startDelta = Math.abs(o0 - n0);
       const octaveDouble = Math.abs(Math.round(o.pitchMidi) - Math.round(n.pitchMidi)) % 12 === 0;
-      return overlap > 0.04 || startDelta < 0.12 || (octaveDouble && startDelta < 0.45);
+      // True bass (<C4) still drops when a high note sits close.
+      // C4 (60) after E4 is a third — keep unless it overlaps / doubles.
+      const lowBass = n.pitchMidi < 58 && startDelta < 0.4;
+      return overlap > 0.04 || startDelta < 0.12 || (octaveDouble && startDelta < 0.45) || lowBass;
     });
   });
 }
@@ -316,7 +319,7 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
       prev.durationSeconds < SHORT &&
       cur.durationSeconds >= SHORT &&
       startDelta > 0.12 &&
-      (startDelta < 0.18 || !samePitchRunHasRestAfter(notes, i))
+      startDelta < 0.32
     ) {
       out[out.length - 1] = cloneNote(cur);
       continue;
@@ -340,22 +343,39 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
       out.push(cloneNote(cur));
       continue;
     }
-    // Rest or gap after this same-pitch run: keep quarter re-attacks split.
-    // Short tails (stutter before the next degree) still merge.
+    // Leftover 0.16–0.21s same-pitch chop after a real note. Drop it —
+    // absorbing extends prev and makes 1 2 1 look like a neighbor-return.
+    const leftoverChop =
+      cur.pitchMidi === prev.pitchMidi &&
+      cur.durationSeconds < 0.24 &&
+      prev.durationSeconds >= SHORT &&
+      startDelta < 0.42 &&
+      gap < 0.18 &&
+      gap > -0.08;
+    if (leftoverChop) {
+      continue;
+    }
+    const moreSamePitch = Boolean(
+      notes[i + 1] && Math.round(notes[i + 1]!.pitchMidi) === Math.round(cur.pitchMidi),
+    );
+    const absorbLeftover = moreSamePitch || !samePitchRunHasRestAfter(notes, i);
+    // Rest after a same-pitch run: keep two substantial re-attacks split.
+    // 青花瓷 `5 5 3` is 0.34s IOI with both pieces ≥0.22s — keep. Short 0.17s
+    // leftovers (稻香 / 告白气球 +1) already dropped above.
     if (
       cur.pitchMidi === prev.pitchMidi &&
-      cur.durationSeconds >= SHORT &&
+      cur.durationSeconds >= 0.22 &&
+      prev.durationSeconds >= 0.22 &&
+      startDelta >= 0.32 &&
+      startDelta < 0.7 &&
       samePitchRunHasRestAfter(notes, i)
     ) {
-      const newAttack = startDelta >= 0.28 || gap >= 0.08;
-      if (newAttack) {
-        prev.durationSeconds = Math.max(
-          0.05,
-          Math.min(prev.durationSeconds, cur.startTimeSeconds - prev.startTimeSeconds),
-        );
-        out.push(cloneNote(cur));
-        continue;
-      }
+      prev.durationSeconds = Math.max(
+        0.05,
+        Math.min(prev.durationSeconds, cur.startTimeSeconds - prev.startTimeSeconds),
+      );
+      out.push(cloneNote(cur));
+      continue;
     }
     // One triangle/BP note chopped into two onsets (combined span still one beat).
     // Short syllable runs stay; only merge when the first piece is already a hold.
@@ -382,7 +402,8 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
       cur.durationSeconds < SHORT &&
       startDelta < 0.42 &&
       gap < 0.25 &&
-      gap > -0.05
+      gap > -0.05 &&
+      absorbLeftover
     ) {
       const end = Math.max(
         prev.startTimeSeconds + prev.durationSeconds,
@@ -392,8 +413,10 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
       prev.amplitude = Math.max(prev.amplitude, cur.amplitude);
       continue;
     }
-    if (cur.pitchMidi === prev.pitchMidi && startDelta > 0.3 && cur.durationSeconds >= 0.17) {
-      prev.durationSeconds = Math.max(0.05, cur.startTimeSeconds - prev.startTimeSeconds);
+    if (cur.pitchMidi === prev.pitchMidi && startDelta >= 0.42 && cur.durationSeconds >= 0.17) {
+      if (gap < 0) {
+        prev.durationSeconds = Math.max(0.05, cur.startTimeSeconds - prev.startTimeSeconds);
+      }
       out.push(cloneNote(cur));
       continue;
     }
@@ -504,7 +527,28 @@ function dropLateSamePitchEcho(notes: BasicPitchNote[]): BasicPitchNote[] {
       Math.round(prev.pitchMidi) === Math.round(n.pitchMidi) &&
       n.startTimeSeconds - prev.startTimeSeconds > 0.62;
     const trail = Boolean(next && Math.round(next.pitchMidi) === Math.round(n.pitchMidi));
-    if (samePrev && (trail || n.durationSeconds < 0.2)) continue;
+    if (samePrev && (trail || n.durationSeconds < 0.2)) {
+      // A long same-pitch lyric run (稻香 8×3) is not a cadence trail.
+      let lo = i;
+      let hi = i;
+      const pitch = Math.round(n.pitchMidi);
+      while (lo > 0 && Math.round(notes[lo - 1]!.pitchMidi) === pitch) lo -= 1;
+      while (hi + 1 < notes.length && Math.round(notes[hi + 1]!.pitchMidi) === pitch) hi += 1;
+      const lyricRun = hi - lo + 1 >= 4 && n.durationSeconds >= 0.2 && samePitchRunHasRestAfter(notes, i);
+      if (!lyricRun) continue;
+    }
+    // Leftover after a finished neighbor cell (`1 2 1` then a held 1 before 3).
+    // A stepwise pair (`1 2 1 1 2`) stays; only a leap (cadence 1→3) is an echo.
+    if (samePrev && n.durationSeconds >= 0.2 && next && out.length >= 3) {
+      const older = out[out.length - 2]!;
+      const x = out[out.length - 3]!;
+      const neighbor =
+        Math.round(older.pitchMidi) !== Math.round(n.pitchMidi) &&
+        Math.abs(Math.round(older.pitchMidi) - Math.round(prev!.pitchMidi)) <= 2;
+      const finishedCell = Math.round(x.pitchMidi) === Math.round(n.pitchMidi);
+      const leap = Math.abs(Math.round(next.pitchMidi) - Math.round(n.pitchMidi)) >= 3;
+      if (neighbor && finishedCell && leap) continue;
+    }
     out.push(cloneNote(n));
   }
   return out;
