@@ -1,8 +1,12 @@
 import { fft, hann } from "./fft";
 import { downsampleMono, mixToMono } from "./pitch";
 import {
+  beatSeconds,
   pitchClassName,
   prefersFlats,
+  secondsPerSixteenth,
+  tickToTime,
+  timeToTick,
   type ChordEvent,
   type ChordQuality,
   type DetectedKey,
@@ -154,14 +158,67 @@ export function transposeChords(chords: ChordEvent[], semitones: number, key?: D
   });
 }
 
-export function formatProgression(chords: ChordEvent[], barsPerLine = 4): string {
+export function formatProgression(
+  chords: ChordEvent[],
+  barsPerLine = 4,
+  opts?: { bpm: number; gridOffset?: number },
+): string {
   if (!chords.length) return "";
-  const names = chords.map((c) => c.symbol);
+  const names = opts?.bpm ? barSymbols(chords, opts.bpm, opts.gridOffset ?? 0) : chords.map((c) => c.symbol);
   const lines: string[] = [];
   for (let i = 0; i < names.length; i += barsPerLine) {
     lines.push("| " + names.slice(i, i + barsPerLine).join("  | ") + "  |");
   }
   return lines.join("\n");
+}
+
+function barSymbols(chords: ChordEvent[], bpm: number, gridOffset: number): string[] {
+  const measure = beatSeconds(bpm) * 4;
+  const end = Math.max(...chords.map((c) => c.start + c.duration));
+  const origin = gridOffset;
+  const nBars = Math.max(1, Math.ceil((end - origin) / measure - 1e-4));
+  const out: string[] = [];
+  for (let i = 0; i < nBars; i++) {
+    const t0 = origin + i * measure;
+    const t1 = t0 + measure;
+    const here = chords.filter((c) => c.start < t1 - 1e-3 && c.start + c.duration > t0 + 1e-3);
+    if (!here.length) {
+      out.push("N.C.");
+      continue;
+    }
+    const parts: string[] = [];
+    for (const c of here) {
+      if (parts[parts.length - 1] !== c.symbol) parts.push(c.symbol);
+    }
+    out.push(parts.join(" "));
+  }
+  return out;
+}
+
+/** Snap chord edges to the same 16th / half-bar grid the melody uses. */
+export function snapChordsToGrid(chords: ChordEvent[], bpm: number, gridOffset: number): ChordEvent[] {
+  if (!chords.length || !Number.isFinite(bpm) || bpm < 40) return chords;
+  const sixteenth = secondsPerSixteenth(bpm);
+  const minUnits = 8;
+  const snapped = chords
+    .map((c) => {
+      const startTick = timeToTick(c.start, bpm, gridOffset);
+      const endTick = Math.max(startTick + minUnits, timeToTick(c.start + c.duration, bpm, gridOffset));
+      return {
+        ...c,
+        start: tickToTime(startTick, bpm, gridOffset),
+        duration: (endTick - startTick) * sixteenth,
+      };
+    })
+    .sort((a, b) => a.start - b.start);
+
+  for (let i = 1; i < snapped.length; i++) {
+    const prev = snapped[i - 1];
+    if (snapped[i].start < prev.start + prev.duration) {
+      prev.duration = Math.max(sixteenth, snapped[i].start - prev.start);
+    }
+  }
+  return mergeChords(snapped, beatSeconds(bpm));
 }
 
 type State = { root: number; quality: ChordQuality };
@@ -171,6 +228,7 @@ export async function detectChords(
   opts: {
     bpm: number;
     key: DetectedKey;
+    gridOffset?: number;
     startSeconds?: number;
     duration?: number;
     melody?: NoteEvent[];
@@ -221,29 +279,32 @@ export async function detectChords(
 
   const bpm = Math.max(40, Math.min(220, opts.bpm || 100));
   const beat = 60 / bpm;
-  const cell = beat * 4;
-  const nCells = Math.max(1, Math.ceil((end - start) / cell));
-  const framesPerCell = Math.max(1, Math.round((cell * WORK) / HOP));
+  const cell = beat * 2;
+  const origin = Number.isFinite(opts.gridOffset) ? (opts.gridOffset as number) : start;
+  let cell0 = origin;
+  while (cell0 > start + 1e-6) cell0 -= cell;
+  const nCells = Math.max(1, Math.ceil((end - cell0) / cell - 1e-6));
   const states: State[] = [];
   for (const quality of QUALITIES) {
     for (let root = 0; root < 12; root++) states.push({ root, quality });
   }
   const templates = states.map((s) => rotate(TEMPLATES[s.quality], s.root));
   const obs: number[][] = [];
+  const cellStarts: number[] = [];
 
   for (let c = 0; c < nCells; c++) {
-    const f0 = c * framesPerCell;
-    const f1 = Math.min(frames, f0 + framesPerCell);
+    const t0 = cell0 + c * cell;
+    const t1 = t0 + cell;
+    cellStarts.push(t0);
+    const f0 = Math.max(0, Math.floor(((t0 - start) * WORK) / HOP));
+    const f1 = Math.min(frames, Math.ceil(((t1 - start) * WORK) / HOP));
     const vec = new Array<number>(12).fill(0);
     for (let f = f0; f < f1; f++) {
       for (let p = 0; p < 12; p++) vec[p] += chroma[f * 12 + p];
     }
     const peak = Math.max(...vec, 1e-6);
     for (let p = 0; p < 12; p++) vec[p] /= peak;
-    // melody pitch-class prior (weak)
     if (opts.melody?.length) {
-      const t0 = start + c * cell;
-      const t1 = t0 + cell;
       for (const n of opts.melody) {
         if (n.start + n.duration < t0 || n.start > t1) continue;
         vec[((Math.round(n.midi) % 12) + 12) % 12] += 0.12 * n.confidence;
@@ -264,14 +325,21 @@ export async function detectChords(
     symbol: chordSymbol(s.root, s.quality, flats),
     root: s.root,
     quality: s.quality,
-    start: start + i * cell,
+    start: cellStarts[i] ?? start + i * cell,
     duration: cell,
     confidence: Math.max(0, Math.min(1, (obs[i]?.[stateIndex(s)] ?? 0.5))),
     roman: chordRoman(s.root, s.quality, opts.key),
   }));
 
   opts.onProgress?.(0.95, "整理和弦");
-  return mergeChords(raw.map((c) => simplifyChord(c, opts.key, flats)), beat);
+  return snapChordsToGrid(
+    mergeChords(
+      raw.map((c) => simplifyChord(c, opts.key, flats)),
+      beat,
+    ),
+    bpm,
+    origin,
+  );
 }
 
 function simplifyChord(c: ChordEvent, key: DetectedKey, flats: boolean): ChordEvent {
@@ -348,7 +416,7 @@ function triadPrior(chroma: number[], root: number, quality: ChordQuality): numb
 }
 
 function transition(a: State, b: State): number {
-  if (a.root === b.root && a.quality === b.quality) return 0.22;
+  if (a.root === b.root && a.quality === b.quality) return 0.3;
   if (a.root === b.root) return 0.02;
   const d = Math.min((b.root - a.root + 12) % 12, (a.root - b.root + 12) % 12);
   if (d === 5 || d === 7) return 0.03;
@@ -372,7 +440,12 @@ function mergeChords(chords: ChordEvent[], beat: number): ChordEvent[] {
   const cleaned: ChordEvent[] = [];
   for (let i = 0; i < out.length; i++) {
     const c = out[i];
-    if (c.duration < beat * 1.4 && i > 0 && i < out.length - 1 && out[i - 1].symbol === out[i + 1].symbol) {
+    if (
+      c.duration <= beat * 2.2 &&
+      i > 0 &&
+      i < out.length - 1 &&
+      out[i - 1].symbol === out[i + 1].symbol
+    ) {
       cleaned[cleaned.length - 1].duration += c.duration + out[i + 1].duration;
       i += 1;
       continue;
