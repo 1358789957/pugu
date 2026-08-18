@@ -29,32 +29,49 @@ export type LeadLine = {
   cells: LeadCell[];
 };
 
-/** Numbered notation relative to the song key. G4 in G major → 1 */
+/**
+ * 固定调: C is always 1, D=2, E=3, F=4, G=5, A=6, B=7.
+ * `tonic` is ignored for the number (kept so old call sites compile).
+ * A G-major opening G A B… is 5 6 7…, not 1 2 3….
+ */
 export function midiToJianpu(
   midi: number,
-  tonic: number,
-  centerMidi = 67,
+  _tonic = 0,
+  centerMidi = 60,
   flats = false,
 ): string {
   const rounded = Math.round(midi);
   const pc = ((rounded % 12) + 12) % 12;
-  const tpc = ((tonic % 12) + 12) % 12;
-  const rel = (pc - tpc + 12) % 12;
   const table = flats
     ? ["1", "b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7"]
     : ["1", "#1", "2", "#2", "3", "4", "#4", "5", "#5", "6", "#6", "7"];
-  const num = table[rel] ?? "1";
-  let tonicMidi = 48 + tpc;
-  while (tonicMidi < centerMidi - 6) tonicMidi += 12;
-  while (tonicMidi > centerMidi + 6) tonicMidi -= 12;
-  const off = Math.floor((rounded - tonicMidi) / 12);
+  const num = table[pc] ?? "1";
+  let refC = 60;
+  while (refC < centerMidi - 6) refC += 12;
+  while (refC > centerMidi + 6) refC -= 12;
+  const off = Math.floor((rounded - refC) / 12);
   if (off > 0) return num + "'".repeat(off);
   if (off < 0) return num + ",".repeat(-off);
   return num;
 }
 
-export function keyJianpuLabel(tonic: number, flats = false): string {
-  return `1=${midiName(60 + (((tonic % 12) + 12) % 12), flats).replace(/\d/g, "").replace("♯", "#").replace("♭", "b")}`;
+/** 固定调 degree with no octave marks. C=1 … B=7. */
+export function jianpuDegree(midi: number): string {
+  return midiToJianpu(midi, 0, 60, false).replace(/[,']/g, "");
+}
+
+/** Move concert pitches so a G-major song is written in C, then 固定调. */
+export function transposeToC(midi: number, fromTonic: number): number {
+  const tpc = ((fromTonic % 12) + 12) % 12;
+  return midi - tpc;
+}
+
+export function cMajorDegrees(midis: number[], fromTonic = 0): string[] {
+  return midis.map((m) => jianpuDegree(transposeToC(m, fromTonic)));
+}
+
+export function keyJianpuLabel(_tonic?: number, _flats = false): string {
+  return "1=C 固定调";
 }
 
 export function melodyPhrases(notes: NoteEvent[], maxLen = 7.2): { start: number; end: number }[] {
@@ -117,9 +134,6 @@ export function assignLyrics(
 
 export function buildLeadSheet(result: AnalysisResult, lyrics: LyricLine[]): LeadLine[] {
   const flats = prefersFlats(result.key.tonic, result.key.mode);
-  const tonic = result.key.tonic;
-  const midis = result.notes.map((n) => n.midi).sort((a, b) => a - b);
-  const center = midis.length ? midis[Math.floor(midis.length / 2)] : 67;
   const measures = notateAnalysis(result);
   if (!measures.length) return [];
 
@@ -149,7 +163,7 @@ export function buildLeadSheet(result: AnalysisResult, lyrics: LyricLine[]): Lea
       const hold = ev.units >= 16 ? "— — —" : ev.units >= 12 ? "— —" : ev.units >= 8 ? "—" : ev.units >= 6 ? "-" : "";
       cells.push({
         name: isRest ? "" : midiName(ev.midi, flats).replace("♯", "#").replace("♭", "b"),
-        jianpu: isRest ? "0" : midiToJianpu(ev.midi, tonic, center, flats),
+        jianpu: isRest ? "0" : midiToJianpu(ev.midi, 0, 60, flats),
         midi: ev.midi,
         start: ev.start,
         duration: ev.duration,

@@ -1,13 +1,13 @@
 export const BASIC_PITCH_RATE = 22050;
 
-/** Vocal-ish defaults. Onset is a bit more sensitive than the library's 0.5 so repeated notes speak. */
+/** Solo-vocal defaults: singing band, drop bass leak, keep short syllables. */
 export const BASIC_PITCH_OPTS = {
-  onsetThresh: 0.32,
-  frameThresh: 0.3,
-  minNoteLen: 7,
+  onsetThresh: 0.34,
+  frameThresh: 0.28,
+  minNoteLen: 6,
   inferOnsets: true,
-  minFreq: 110,
-  maxFreq: 1050,
+  minFreq: 196,
+  maxFreq: 880,
   melodiaTrick: true,
 } as const;
 

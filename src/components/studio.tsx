@@ -201,7 +201,7 @@ export function Studio({
       setResult(analyzed);
       setStatus("ready");
       if (!next && mode === "vocals") setMode("source");
-      toast.success(next ? "已按人声重扒" : "已按原曲重扒");
+      toast.success(next ? "已用 HPSS 弱分离重扒（会漏伴奏）" : "已按干声直送 Basic Pitch");
     } catch {
       setStatus("ready");
       toast.error("重新分离失败");
@@ -225,9 +225,12 @@ export function Studio({
       const buf = await ctx.decodeAudioData(arr.slice(0));
       await ctx.close();
       bufferRef.current = buf;
+      const looksDry = /人声|vocal|vocals|dry|哼唱|acapella|acappella/i.test(file.name);
+      const useHpss = looksDry ? false : isolate;
+      if (looksDry && isolate) setIsolate(false);
       setStatus("analyzing");
       setProgress(0);
-      const next = await analyzeMelody(buf, { ...opts, maxSeconds: 360, isolateVocals: isolate }, (p, label) => {
+      const next = await analyzeMelody(buf, { ...opts, maxSeconds: 360, isolateVocals: useHpss }, (p, label) => {
         setProgress(p);
         setProgressLabel(label);
       });
@@ -235,9 +238,9 @@ export function Studio({
       setResult(next);
       setStatus("ready");
       toast.success(
-        isolate
-          ? `已拆人声 · ${next.notes.length} 个音 · ${next.key.name}`
-          : `抽出 ${next.notes.length} 个音 · ${next.key.name}`,
+        useHpss
+          ? `HPSS 弱分离 · ${next.notes.length} 个音 · ${next.key.name}`
+          : `干声直送 Basic Pitch · ${next.notes.length} 个音 · ${next.key.name}`,
       );
     } catch (err) {
       console.error(err);
@@ -467,7 +470,7 @@ export function Studio({
               听出骨头里的旋律
             </h1>
             <p className="mt-3 text-sm text-muted sm:text-base">
-              上传成曲会先拆出人声，再在浏览器里用 Basic Pitch 转成音符。导出的文件自带 BPM，拖进编曲软件就能用。
+              有干声请选「这是干声」，整段直接进 Basic Pitch。成曲只能用 HPSS 弱分离（会漏伴奏）。导出 MIDI 自带 BPM。
             </p>
           </div>
           <DropZone
@@ -722,9 +725,9 @@ export function Studio({
                         : "border-border text-muted hover:text-fg"
                     }`}
                   >
-                    <span>分离人声</span>
+                    <span>{isolate ? "成曲弱分离" : "这是干声"}</span>
                     <span className="font-mono text-xs tabular-nums">
-                      {isolate ? "开" : "关"}
+                      {isolate ? "HPSS" : "直送"}
                     </span>
                   </button>
                   <button

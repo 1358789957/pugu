@@ -9,9 +9,13 @@ const BINS = FFT / 2 + 1;
 export type IsolateProgress = (p: number, label: string) => void;
 
 /**
- * Lightweight vocal isolate for melody extraction.
- * Stereo: keep the mid (centered) image, drop sides.
- * Then HPSS + a vocal-band prior so drums/bass don't steal the pitch tracker.
+ * Weak in-browser fallback. Not Demucs.
+ * HT-Demucs ONNX is ~166MB and multi-minute WASM per song — it does not fit
+ * this Vite app. Spleeter ONNX needs a custom STFT host we do not ship.
+ * Prefer the 「这是干声」 path: skip this and send the buffer to Basic Pitch.
+ *
+ * Stereo: keep the mid image, drop sides, then HPSS + a vocal-band prior.
+ * Accompaniment still leaks. Do not treat the output as a clean stem.
  */
 export async function isolateVocals(
   buffer: AudioBuffer,

@@ -93,7 +93,7 @@ export function DropZone({
       </div>
       <h2 className="font-display text-xl font-medium text-fg">把歌放上来</h2>
       <p className="mt-2 max-w-sm text-sm text-muted">
-        上传成曲会先把人声拆出来，再交给 Basic Pitch 转成音符。人声越干净，卷帘越准。
+        有干声就走「这是干声」：不再做 HPSS，整段交给 Basic Pitch。成曲只能用弱分离，会漏伴奏。
       </p>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
         <Button disabled={disabled} onClick={() => inputRef.current?.click()}>
@@ -113,22 +113,42 @@ export function DropZone({
       </div>
       {recError ? <p className="mt-3 text-sm text-danger">{recError}</p> : null}
       {onIsolate ? (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => onIsolate(!isolate)}
-          className={cn(
-            "mt-5 flex h-11 items-center gap-2 rounded-md border px-3 text-sm",
-            isolate
-              ? "border-accent/40 bg-elevated text-fg"
-              : "border-border text-muted hover:text-fg",
-          )}
-        >
-          <span className="font-medium">{isolate ? "先分离人声" : "不分离，直接扒"}</span>
-          <span className="text-xs text-subtle">{isolate ? "适合成曲" : "适合干声 / 哼唱"}</span>
-        </button>
+        <div className="mt-5 flex flex-col items-center gap-2">
+          <div className="flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onIsolate(false)}
+              className={cn(
+                "flex h-11 items-center gap-2 rounded-md border px-3 text-sm",
+                !isolate
+                  ? "border-accent/40 bg-elevated text-fg"
+                  : "border-border text-muted hover:text-fg",
+              )}
+            >
+              <span className="font-medium">这是干声</span>
+              <span className="text-xs text-subtle">已拆人声 / 哼唱，直接进 Basic Pitch</span>
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onIsolate(true)}
+              className={cn(
+                "flex h-11 items-center gap-2 rounded-md border px-3 text-sm",
+                isolate
+                  ? "border-border bg-elevated text-muted"
+                  : "border-border text-muted hover:text-fg",
+              )}
+            >
+              <span className="font-medium">成曲弱分离</span>
+              <span className="text-xs text-subtle">HPSS + 中置，会漏伴奏</span>
+            </button>
+          </div>
+          <p className="max-w-md text-xs text-subtle">
+            浏览器里没有体积合适的 Demucs。有干声请选「这是干声」。HPSS 只是退路，不是干净人声。最长约 6 分钟
+          </p>
+        </div>
       ) : null}
-      <p className="mt-4 text-xs text-subtle">成曲请开分离；哼唱或独奏可关掉。最长约 6 分钟</p>
       <div className="mt-6 w-full max-w-md rounded-xl border border-border bg-elevated px-4 py-3 text-left">
         <p className="text-sm font-medium text-fg">《昼回のメモリー》已扒好</p>
         <p className="mt-1 text-xs text-subtle">G 大调 · 117 BPM · 可直接进库乐队钢琴帘</p>

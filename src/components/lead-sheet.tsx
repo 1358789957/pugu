@@ -62,7 +62,7 @@ export function LeadSheet({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-subtle">简谱写法 · 上数字 · 中歌词 · 下和弦</p>
+        <p className="text-xs text-subtle">简谱 1=C 固定调 · 上数字 · 中歌词 · 下和弦</p>
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" onClick={copy}>
             复制文本

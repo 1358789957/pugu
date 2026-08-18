@@ -2,8 +2,8 @@ import { makeNoteId, resetNoteIds, type NoteEvent } from "./notes";
 import type { BasicPitchNote } from "./basic-pitch-options";
 import { BASIC_PITCH_OPTS } from "./basic-pitch-options";
 
-const MELODY_MIDI_LO = 48
-const MELODY_MIDI_HI = 86
+const MELODY_MIDI_LO = 55
+const MELODY_MIDI_HI = 79
 
 /** Prefer a single vocal melody: drop accompaniment, resolve overlaps. */
 export function pickMelodyNotes(events: BasicPitchNote[]): BasicPitchNote[] {
@@ -44,8 +44,18 @@ export function pickMelodyNotes(events: BasicPitchNote[]): BasicPitchNote[] {
     const prev = picked[clash]!
     if (n.pitchMidi === prev.pitchMidi) {
       const startDelta = n.startTimeSeconds - prev.startTimeSeconds
-      // Short same-pitch blips in the gap between two quarters are not re-attacks.
-      if (startDelta > 0.12 && n.durationSeconds >= 0.18) {
+      const gap = n.startTimeSeconds - (prev.startTimeSeconds + prev.durationSeconds)
+      if (startDelta > 0.3 && n.durationSeconds >= 0.17) {
+        prev.durationSeconds = Math.max(0.05, n.startTimeSeconds - prev.startTimeSeconds)
+        picked.push(n)
+      } else if (gap < 0.06) {
+        const end = Math.max(
+          prev.startTimeSeconds + prev.durationSeconds,
+          n.startTimeSeconds + n.durationSeconds,
+        )
+        prev.durationSeconds = end - prev.startTimeSeconds
+        prev.amplitude = Math.max(prev.amplitude, n.amplitude)
+      } else if (startDelta > 0.18 && n.durationSeconds >= 0.16) {
         prev.durationSeconds = Math.max(0.05, n.startTimeSeconds - prev.startTimeSeconds)
         picked.push(n)
       } else {
@@ -63,16 +73,32 @@ export function pickMelodyNotes(events: BasicPitchNote[]): BasicPitchNote[] {
       if (melodyScore(n) > melodyScore(prev)) picked[clash] = n
       continue
     }
-    if (n.amplitude > prev.amplitude * 1.08) {
+    const startDelta = n.startTimeSeconds - prev.startTimeSeconds
+    if (
+      startDelta > 0.1 &&
+      n.durationSeconds >= 0.11 &&
+      n.amplitude >= 0.22 &&
+      n.pitchMidi >= 64
+    ) {
+      prev.durationSeconds = Math.max(0.05, n.startTimeSeconds - prev.startTimeSeconds)
+      picked.push(n)
+      continue
+    }
+    if (melodyScore(n) > melodyScore(prev) * 1.08) {
       picked[clash] = n
     }
   }
 
   picked.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds)
-  return dropPitchGhosts(mergeAdjacent(picked))
+  // Ghosts first: merging a 140ms blip into the next syllable steals its onset
+  // (the C-major 2 2 pair must keep the later start, not the ghost).
+  return mergeAdjacent(dropPitchGhosts(dropChromaticSlides(picked)))
 }
 
-/** Drop sub-180ms same-pitch blips that sit in the gap between two real notes. */
+/**
+ * Drop sub-160ms same-pitch blips in a gap. Not a syllable:
+ * the C-major `2 2` pair (~0.19s, ~0.5s apart) must stay two notes.
+ */
 function dropPitchGhosts(notes: BasicPitchNote[]): BasicPitchNote[] {
   if (notes.length < 2) return notes
   const out: BasicPitchNote[] = []
@@ -80,26 +106,36 @@ function dropPitchGhosts(notes: BasicPitchNote[]): BasicPitchNote[] {
     const n = { ...notes[i]! }
     const prev = out[out.length - 1]
     const next = notes[i + 1]
-    const short = n.durationSeconds < 0.18
+    const short = n.durationSeconds < 0.16
     const gapPrev = prev
       ? n.startTimeSeconds - (prev.startTimeSeconds + prev.durationSeconds)
       : Infinity
     const gapNext = next
       ? next.startTimeSeconds - (n.startTimeSeconds + n.durationSeconds)
       : Infinity
-    const samePrev = Boolean(prev && prev.pitchMidi === n.pitchMidi && gapPrev < 0.14)
+    const samePrev = Boolean(prev && prev.pitchMidi === n.pitchMidi && gapPrev < 0.22)
     const sameNext = Boolean(next && next.pitchMidi === n.pitchMidi && gapNext < 0.14)
     if (short && (samePrev || sameNext)) {
-      if (samePrev && prev) {
-        const end = Math.max(
-          prev.startTimeSeconds + prev.durationSeconds,
-          n.startTimeSeconds + n.durationSeconds,
-        )
-        prev.durationSeconds = end - prev.startTimeSeconds
-      }
       continue
     }
     out.push(n)
+  }
+  return out
+}
+
+function dropChromaticSlides(notes: BasicPitchNote[]): BasicPitchNote[] {
+  if (notes.length < 3) return notes
+  const out: BasicPitchNote[] = []
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i]!
+    const prev = out[out.length - 1]
+    const next = notes[i + 1]
+    const short = n.durationSeconds < 0.16
+    const nearPrev = prev && Math.abs(Math.round(n.pitchMidi) - Math.round(prev.pitchMidi)) === 1
+    const nearNext = next && Math.abs(Math.round(n.pitchMidi) - Math.round(next.pitchMidi)) === 1
+    if (short && nearPrev && nearNext) continue
+    if (n.durationSeconds < 0.12 && nearNext && next && n.amplitude < next.amplitude * 0.9) continue
+    out.push({ ...n })
   }
   return out
 }
@@ -116,8 +152,33 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
     const cur = notes[i]!
     const prev = out[out.length - 1]!
     const gap = cur.startTimeSeconds - (prev.startTimeSeconds + prev.durationSeconds)
-    const startDelta = cur.startTimeSeconds - prev.startTimeSeconds;
-    if (cur.pitchMidi === prev.pitchMidi && startDelta < 0.12 && gap < 0.012 && gap > -0.02) {
+    const startDelta = cur.startTimeSeconds - prev.startTimeSeconds
+    // A leftover ghost must not become the start of the next real syllable.
+    if (
+      cur.pitchMidi === prev.pitchMidi &&
+      prev.durationSeconds < 0.16 &&
+      cur.durationSeconds >= 0.16 &&
+      startDelta > 0.12
+    ) {
+      out[out.length - 1] = { ...cur }
+      continue
+    }
+    if (
+      cur.pitchMidi === prev.pitchMidi &&
+      cur.durationSeconds < 0.16 &&
+      startDelta < 0.5 &&
+      gap < 0.25 &&
+      gap > -0.05
+    ) {
+      const end = Math.max(
+        prev.startTimeSeconds + prev.durationSeconds,
+        cur.startTimeSeconds + cur.durationSeconds,
+      )
+      prev.durationSeconds = end - prev.startTimeSeconds
+      prev.amplitude = Math.max(prev.amplitude, cur.amplitude)
+      continue
+    }
+    if (cur.pitchMidi === prev.pitchMidi && startDelta <= 0.3 && gap < 0.08 && gap > -0.05) {
       const end = Math.max(
         prev.startTimeSeconds + prev.durationSeconds,
         cur.startTimeSeconds + cur.durationSeconds,

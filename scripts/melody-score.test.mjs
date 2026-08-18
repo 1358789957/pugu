@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { TWINKLE, DEMO_BPM } from "../src/lib/melody/demo.ts";
-import { midiToJianpu, buildLeadSheet } from "../src/lib/melody/leadsheet.ts";
+import { midiToJianpu, buildLeadSheet, keyJianpuLabel } from "../src/lib/melody/leadsheet.ts";
 import { asciiTrackName, notesToMidi, notesToTicks } from "../src/lib/melody/midi.ts";
 import { notateScore } from "../src/lib/melody/notation.ts";
 import {
@@ -103,11 +103,17 @@ test("spelling follows the key signature", () => {
   assert.equal(fsC.printed, "♯");
 });
 
-test("jianpu: G4 in G major is 1, F#4 below it is 7,", () => {
-  assert.equal(midiToJianpu(67, 7, 67, false), "1");
-  assert.equal(midiToJianpu(69, 7, 67, false), "2");
-  assert.equal(midiToJianpu(66, 7, 67, false), "7,");
-  assert.equal(midiToJianpu(60, 0, 60, false), "1");
+test("jianpu is 1=C 固定调: C=1, G=5, never 1=G", () => {
+  assert.equal(midiToJianpu(60, 7, 60, false), "1");
+  assert.equal(midiToJianpu(62, 7, 60, false), "2");
+  assert.equal(midiToJianpu(64, 7, 60, false), "3");
+  assert.equal(midiToJianpu(65, 7, 60, false), "4");
+  assert.equal(midiToJianpu(67, 7, 60, false), "5");
+  assert.equal(midiToJianpu(69, 7, 60, false), "6");
+  assert.equal(midiToJianpu(71, 7, 60, false), "7");
+  assert.equal(midiToJianpu(72, 7, 60, false), "1'");
+  assert.equal(keyJianpuLabel(7, false), "1=C 固定调");
+  assert.notEqual(midiToJianpu(67, 7, 60, false), "1");
 });
 
 test("lead sheet is four bars per line with barlines", () => {

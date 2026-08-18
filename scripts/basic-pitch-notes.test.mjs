@@ -28,6 +28,7 @@ test("pickMelodyNotes keeps a monophonic vocal line", () => {
 });
 
 test("pickMelodyNotes ignores a short same-pitch ghost between two notes", () => {
+  // 0.14s is a ghost, not a syllable. Must not steal the later onset (0.88).
   const events = [
     ev({ startTimeSeconds: 0.2, durationSeconds: 0.5, pitchMidi: 60, amplitude: 0.55 }),
     ev({ startTimeSeconds: 0.72, durationSeconds: 0.14, pitchMidi: 60, amplitude: 0.3 }),
@@ -38,6 +39,48 @@ test("pickMelodyNotes ignores a short same-pitch ghost between two notes", () =>
   assert.equal(picked[0].startTimeSeconds, 0.2);
   assert.ok(picked[0].durationSeconds <= 0.7);
   assert.equal(picked[1].startTimeSeconds, 0.88);
+});
+
+test("pickMelodyNotes drops a short same-pitch stutter before the next degree", () => {
+  // From-0 Basic Pitch on hirumawari: extra B (7) before C (1). Keep one 7.
+  const events = [
+    ev({ startTimeSeconds: 2.497, durationSeconds: 0.197, pitchMidi: 71, amplitude: 0.74 }),
+    ev({ startTimeSeconds: 2.869, durationSeconds: 0.104, pitchMidi: 71, amplitude: 0.79 }),
+    ev({ startTimeSeconds: 3.066, durationSeconds: 0.221, pitchMidi: 72, amplitude: 0.68 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.deepEqual(
+    picked.map((n) => [n.startTimeSeconds, n.pitchMidi]),
+    [
+      [2.497, 71],
+      [3.066, 72],
+    ],
+  );
+});
+
+test("pickMelodyNotes keeps a lone short syllable (G-audio 7 before 1)", () => {
+  const events = [
+    ev({ startTimeSeconds: 2.303, durationSeconds: 0.174, pitchMidi: 69, amplitude: 0.59 }),
+    ev({ startTimeSeconds: 2.907, durationSeconds: 0.081, pitchMidi: 71, amplitude: 0.74 }),
+    ev({ startTimeSeconds: 2.988, durationSeconds: 0.28, pitchMidi: 72, amplitude: 0.74 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.deepEqual(
+    picked.map((n) => n.pitchMidi),
+    [69, 71, 72],
+  );
+});
+
+test("pickMelodyNotes keeps the C-major 2 2 pair (two Ds / G-audio two As)", () => {
+  // Notes 11–12 of 12323432712271. In G they are two As ~0.52s apart, ~0.19s each.
+  const events = [
+    ev({ startTimeSeconds: 4.893, durationSeconds: 0.186, pitchMidi: 69, amplitude: 0.45 }),
+    ev({ startTimeSeconds: 5.417, durationSeconds: 0.186, pitchMidi: 69, amplitude: 0.42 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.equal(picked.length, 2);
+  assert.equal(picked[0].startTimeSeconds, 4.893);
+  assert.equal(picked[1].startTimeSeconds, 5.417);
 });
 
 test("pickMelodyNotes keeps same-pitch re-attacks", () => {
