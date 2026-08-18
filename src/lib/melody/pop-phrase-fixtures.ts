@@ -30,13 +30,17 @@ export function movableMajorToCFixed(published: readonly string[], tonicPc: numb
   });
 }
 
-export function publishedToScore(published: readonly string[], tonicMidi: number): ScoreNote[] {
-  return published.map((token) => {
+export function publishedToScore(
+  published: readonly string[],
+  tonicMidi: number,
+  beats?: readonly number[],
+): ScoreNote[] {
+  return published.map((token, i) => {
     const deg = Number(token.replace(/[^1-7]/g, ""));
     const down = (token.match(/,/g) ?? []).length;
     const up = (token.match(/'/g) ?? []).length;
     const step = MAJOR_SEMITONES[deg - 1] ?? 0;
-    return { midi: tonicMidi + step + (up - down) * 12, beats: 1 };
+    return { midi: tonicMidi + step + (up - down) * 12, beats: beats?.[i] ?? 1 };
   });
 }
 
@@ -44,7 +48,7 @@ export function publishedToScore(published: readonly string[], tonicMidi: number
 export function synthTonicMidi(published: readonly string[], tonicMidi: number): number {
   const midis = publishedToScore(published, tonicMidi).map((n) => n.midi);
   let shift = 0;
-  while (Math.min(...midis) + shift < 55) shift += 12;
+  while (Math.min(...midis) + shift < 56) shift += 12;
   while (Math.max(...midis) + shift > 79 && Math.min(...midis) + shift - 12 >= 55) shift -= 12;
   return tonicMidi + shift;
 }
@@ -72,6 +76,8 @@ export type PopPhraseFixture = {
   /** Set only when locked or previously derived. Published 首调 is SoT. */
   cMajorFixed: readonly string[] | null;
   liveAudio: "hirumawari-vocal" | null;
+  /** Optional per-note beats for triangle synth (site holds). */
+  synthBeats?: readonly number[];
 };
 
 const TONIC_B = 11;
@@ -263,6 +269,8 @@ export const POP_PHRASE_FIXTURES: PopPhraseFixture[] = [
     publishedMovableDo: BUNENG_SHUO_DE_MIMI_PUBLISHED,
     cMajorFixed: null,
     liveAudio: null,
+    // Site `4_4_4_4_4_3=3=-`: hold the two 3s so BP does not stick on 4.
+    synthBeats: [1, 1, 1, 1, 1, 1, 2, 2],
   },
   {
     id: "guyongzhe",
