@@ -183,6 +183,64 @@ test("pickMelodyNotes drops flourish re-hits of the run pitch and the next degre
   );
 });
 
+test("pickMelodyNotes keeps two 7s at 0.67s IOI after leftover chops", () => {
+  const events = [
+    ev({ startTimeSeconds: 1.89, durationSeconds: 0.41, pitchMidi: 77 }),
+    ev({ startTimeSeconds: 2.358, durationSeconds: 0.163, pitchMidi: 69 }),
+    ev({ startTimeSeconds: 2.532, durationSeconds: 0.197, pitchMidi: 69 }),
+    ev({ startTimeSeconds: 2.73, durationSeconds: 0.163, pitchMidi: 69 }),
+    ev({ startTimeSeconds: 2.892, durationSeconds: 0.139, pitchMidi: 69 }),
+    ev({ startTimeSeconds: 3.031, durationSeconds: 0.197, pitchMidi: 69 }),
+    ev({ startTimeSeconds: 3.229, durationSeconds: 0.081, pitchMidi: 69 }),
+    ev({ startTimeSeconds: 3.403, durationSeconds: 0.337, pitchMidi: 65 }),
+  ];
+  const sevens = pickMelodyNotes(events).filter((n) => n.pitchMidi === 69);
+  assert.equal(sevens.length, 2);
+});
+
+test("pickMelodyNotes keeps three 1s before 6 (not two)", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.395, durationSeconds: 0.337, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 0.731, durationSeconds: 0.163, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 0.894, durationSeconds: 0.128, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 1.022, durationSeconds: 0.209, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 1.231, durationSeconds: 0.163, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 1.393, durationSeconds: 0.348, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 1.904, durationSeconds: 0.326, pitchMidi: 56 }),
+  ];
+  const ones = pickMelodyNotes(events).filter((n) => n.pitchMidi === 59);
+  assert.equal(ones.length, 3);
+});
+
+test("pickMelodyNotes keeps 1 7 1 1 5 (pair after neighbor, not echo)", () => {
+  const events = [
+    ev({ startTimeSeconds: 1.38, durationSeconds: 0.43, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 2.03, durationSeconds: 0.27, pitchMidi: 66 }),
+    ev({ startTimeSeconds: 2.38, durationSeconds: 0.5, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 2.88, durationSeconds: 0.15, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 3.03, durationSeconds: 0.28, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 3.4, durationSeconds: 0.51, pitchMidi: 62 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [67, 66, 67, 67, 62],
+  );
+});
+
+test("pickMelodyNotes keeps a return 6 when another 6 follows (6 5 6 6)", () => {
+  const events = [
+    ev({ startTimeSeconds: 2.4, durationSeconds: 0.41, pitchMidi: 64 }),
+    ev({ startTimeSeconds: 2.88, durationSeconds: 0.35, pitchMidi: 62 }),
+    ev({ startTimeSeconds: 3.39, durationSeconds: 0.51, pitchMidi: 64 }),
+    ev({ startTimeSeconds: 3.9, durationSeconds: 0.41, pitchMidi: 64 }),
+    ev({ startTimeSeconds: 4.38, durationSeconds: 0.42, pitchMidi: 62 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [64, 62, 64, 64, 62],
+  );
+});
+
 test("pickMelodyNotes keeps a stepwise 1 2 1 1 pair before 2", () => {
   const events = [
     ev({ startTimeSeconds: 1.39, durationSeconds: 0.35, pitchMidi: 67 }),
@@ -343,6 +401,23 @@ test("pickMelodyNotes does not merge same-pitch re-attacks when a rest follows t
   events.push(ev({ startTimeSeconds: 2.28, durationSeconds: 0.4, pitchMidi: 64 }));
   const run = pickMelodyNotes(events).filter((n) => n.pitchMidi === 65);
   assert.equal(run.length, 5);
+});
+
+test("pickMelodyNotes keeps sequential 1 then 1' (not a bass octave)", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.406, durationSeconds: 0.325, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 0.731, durationSeconds: 0.081, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 0.894, durationSeconds: 0.139, pitchMidi: 55 }),
+    ev({ startTimeSeconds: 1.033, durationSeconds: 0.197, pitchMidi: 55 }),
+    ev({ startTimeSeconds: 1.231, durationSeconds: 0.093, pitchMidi: 55 }),
+    ev({ startTimeSeconds: 1.382, durationSeconds: 0.151, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 1.533, durationSeconds: 0.279, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 1.904, durationSeconds: 0.396, pitchMidi: 66 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [59, 55, 67, 66],
+  );
 });
 
 test("pickMelodyNotes drops a sequential octave double under the melody", () => {

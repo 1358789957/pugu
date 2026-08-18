@@ -1,6 +1,5 @@
 import { makeNoteId, resetNoteIds, type NoteEvent } from "./notes";
 import type { BasicPitchNote } from "./basic-pitch-options";
-import { BASIC_PITCH_OPTS } from "./basic-pitch-options";
 
 const MELODY_MIDI_LO = 55;
 const MELODY_MIDI_HI = 79;
@@ -8,14 +7,14 @@ const SHORT = 0.16;
 
 /** Prefer a single vocal melody: drop accompaniment, resolve overlaps. */
 export function pickMelodyNotes(events: BasicPitchNote[]): BasicPitchNote[] {
-  const { minFreq, maxFreq } = BASIC_PITCH_OPTS;
   const inBand = events.filter((n) => {
     if (n.durationSeconds < 0.04) return false;
     if (n.amplitude < 0.05) return false;
     const midi = Math.round(n.pitchMidi);
     if (midi < MELODY_MIDI_LO || midi > MELODY_MIDI_HI) return false;
-    const hz = 440 * 2 ** ((midi - 69) / 12);
-    return hz >= minFreq && hz <= maxFreq;
+    // MIDI 55 (G3) is the band floor. 440*2^((55-69)/12) is ~195.998 Hz,
+    // so a minFreq=196 Hz gate would drop a real low 1 at the floor.
+    return true;
   });
 
   const sorted = [...inBand].sort((a, b) => {
@@ -204,9 +203,9 @@ function shortPitchRun(notes: BasicPitchNote[], i: number): boolean {
 }
 
 /**
- * Bass doubled under a vocal note (midi < 62 while a midi≥64 overlaps,
- * starts with it, or is the same pitch class an octave up). Sequential C4
- * after E4 is a third — melody, not an octave double.
+ * Bass doubled under a vocal note (midi < 62 while a midi≥64 overlaps
+ * or starts with it). Sequential C4 after E4 is a third; sequential 1
+ * then 1' (~0.35s, no overlap) is the next syllable — not a bass octave.
  */
 function dropBassUnderMelody(notes: BasicPitchNote[]): BasicPitchNote[] {
   return notes.filter((n, i) => {
@@ -219,11 +218,7 @@ function dropBassUnderMelody(notes: BasicPitchNote[]): BasicPitchNote[] {
       const o1 = o0 + o.durationSeconds;
       const overlap = Math.min(n1, o1) - Math.max(n0, o0);
       const startDelta = Math.abs(o0 - n0);
-      const octaveDouble = Math.abs(Math.round(o.pitchMidi) - Math.round(n.pitchMidi)) % 12 === 0;
-      // True bass (<C4) still drops when a high note sits close.
-      // C4 (60) after E4 is a third — keep unless it overlaps / doubles.
-      const lowBass = n.pitchMidi < 58 && startDelta < 0.4;
-      return overlap > 0.04 || startDelta < 0.12 || (octaveDouble && startDelta < 0.45) || lowBass;
+      return overlap > 0.04 || startDelta < 0.12;
     });
   });
 }
@@ -502,7 +497,11 @@ function dropNeighborReturns(notes: BasicPitchNote[]): BasicPitchNote[] {
         // Synth quarters are all ~0.4–0.5s; a real echo is much longer than Y.
         const echo =
           n.durationSeconds >= 0.5 && n.durationSeconds >= prev.durationSeconds + 0.16;
-        if (step >= 1 && step <= 2 && echo) {
+        const moreSame = Boolean(
+          notes[i + 1] && Math.round(notes[i + 1]!.pitchMidi) === Math.round(n.pitchMidi),
+        );
+        // `6 5 6 6` / `3 2 3 3` — the return is the first of a pair, not an echo.
+        if (step >= 1 && step <= 2 && echo && !moreSame) {
           continue;
         }
       }
@@ -527,14 +526,14 @@ function dropLateSamePitchEcho(notes: BasicPitchNote[]): BasicPitchNote[] {
       Math.round(prev.pitchMidi) === Math.round(n.pitchMidi) &&
       n.startTimeSeconds - prev.startTimeSeconds > 0.62;
     const trail = Boolean(next && Math.round(next.pitchMidi) === Math.round(n.pitchMidi));
-    if (samePrev && (trail || n.durationSeconds < 0.2)) {
+    if (samePrev && (trail || n.durationSeconds < SHORT)) {
       // A long same-pitch lyric run (稻香 8×3) is not a cadence trail.
       let lo = i;
       let hi = i;
       const pitch = Math.round(n.pitchMidi);
       while (lo > 0 && Math.round(notes[lo - 1]!.pitchMidi) === pitch) lo -= 1;
       while (hi + 1 < notes.length && Math.round(notes[hi + 1]!.pitchMidi) === pitch) hi += 1;
-      const lyricRun = hi - lo + 1 >= 4 && n.durationSeconds >= 0.2 && samePitchRunHasRestAfter(notes, i);
+      const lyricRun = hi - lo + 1 >= 3 && n.durationSeconds >= 0.2 && samePitchRunHasRestAfter(notes, i);
       if (!lyricRun) continue;
     }
     // Leftover after a finished neighbor cell (`1 2 1` then a held 1 before 3).
@@ -547,7 +546,9 @@ function dropLateSamePitchEcho(notes: BasicPitchNote[]): BasicPitchNote[] {
         Math.abs(Math.round(older.pitchMidi) - Math.round(prev!.pitchMidi)) <= 2;
       const finishedCell = Math.round(x.pitchMidi) === Math.round(n.pitchMidi);
       const leap = Math.abs(Math.round(next.pitchMidi) - Math.round(n.pitchMidi)) >= 3;
-      if (neighbor && finishedCell && leap) continue;
+      // Lyric pair `1 1 5`: prev is already a quarter. Echo after X Y X is short.
+      const echoAfterCell = prev!.durationSeconds < 0.28;
+      if (neighbor && finishedCell && leap && echoAfterCell) continue;
     }
     out.push(cloneNote(n));
   }
