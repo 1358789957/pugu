@@ -138,6 +138,26 @@ test("mergeContourIntoNotes inserts D4 from the island, not B3 or 60+pc", () => 
   assert.ok(!midis.includes(71), "must not 60+pc octave-boost B3 into 71");
 });
 
+test("mergeContourIntoNotes does not put a passing tone into a rest", () => {
+  const notes = [
+    { startTimeSeconds: 0.0, durationSeconds: 0.2, pitchMidi: 67, amplitude: 0.6 },
+    { startTimeSeconds: 1.4, durationSeconds: 0.2, pitchMidi: 71, amplitude: 0.6 },
+  ];
+  const raw = [];
+  for (let t = 0; t <= 1.6; t += 0.01) {
+    let hz = 0;
+    if (t < 0.18) hz = G4;
+    else if (t >= 0.7 && t <= 0.92) hz = 440;
+    else if (t >= 1.38) hz = 493.88;
+    raw.push(frame(t, hz, { voiced: hz > 0 }));
+  }
+  const merged = mergeContourIntoNotes(notes, continueWavelength(raw, SR));
+  assert.deepEqual(
+    merged.map((n) => n.pitchMidi),
+    [67, 71],
+  );
+});
+
 test("mergeContourIntoNotes skips a pitch-class glide hugging the next note", () => {
   const notes = [
     { startTimeSeconds: 0.0, durationSeconds: 0.2, pitchMidi: 66, amplitude: 0.6 },

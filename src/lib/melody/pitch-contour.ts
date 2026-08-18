@@ -270,9 +270,14 @@ export function mergeContourIntoNotes(notes: BasicPitchNote[], filled: ContourFr
     if (host < 0) continue;
     const left = Math.round(sorted[host]!.pitchMidi);
     const right = Math.round(sorted[host + 1]!.pitchMidi);
+    const prev = host > 0 ? Math.round(sorted[host - 1]!.pitchMidi) : null;
     const pc = pitchClass(midi);
     if (pc === pitchClass(left) || pc === pitchClass(right)) continue;
+    if (prev != null && pc === pitchClass(prev)) continue;
     if (Math.abs(midi - left) % 12 === 0 || Math.abs(midi - right) % 12 === 0) continue;
+    const lo = Math.min(left, right);
+    const hi = Math.max(left, right);
+    if (midi > lo && midi < hi) continue;
     inserts.push({
       startTimeSeconds: start,
       durationSeconds: Math.max(0.08, cn.durationSeconds),
