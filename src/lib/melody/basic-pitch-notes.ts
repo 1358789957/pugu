@@ -139,22 +139,43 @@ export function dropSqueezedGhosts(notes: BasicPitchNote[]): BasicPitchNote[] {
  * Drop sub-160ms same-pitch blips in a gap. Not a syllable:
  * the C-major `2 2` pair (~0.19s, ~0.5s apart) must stay two notes.
  */
+function nearestSamePitch(notes: BasicPitchNote[], i: number, dir: -1 | 1): BasicPitchNote | null {
+  const pitch = Math.round(notes[i]!.pitchMidi);
+  const t0 = notes[i]!.startTimeSeconds;
+  for (let j = i + dir; j >= 0 && j < notes.length; j += dir) {
+    const p = notes[j]!;
+    if (Math.abs(p.startTimeSeconds - t0) > 0.45) break;
+    if (Math.round(p.pitchMidi) === pitch) return p;
+  }
+  return null;
+}
+
+function lastSamePitch(kept: BasicPitchNote[], n: BasicPitchNote): BasicPitchNote | null {
+  const pitch = Math.round(n.pitchMidi);
+  for (let j = kept.length - 1; j >= 0; j--) {
+    const p = kept[j]!;
+    if (n.startTimeSeconds - p.startTimeSeconds > 0.45) break;
+    if (Math.round(p.pitchMidi) === pitch) return p;
+  }
+  return null;
+}
+
 function dropPitchGhosts(notes: BasicPitchNote[]): BasicPitchNote[] {
   if (notes.length < 2) return notes;
   const out: BasicPitchNote[] = [];
   for (let i = 0; i < notes.length; i++) {
     const n = cloneNote(notes[i]!);
-    const prev = out[out.length - 1];
-    const next = notes[i + 1];
     const short = n.durationSeconds < SHORT;
-    const gapPrev = prev
-      ? n.startTimeSeconds - (prev.startTimeSeconds + prev.durationSeconds)
+    const sameBehind = lastSamePitch(out, n);
+    const sameAhead = nearestSamePitch(notes, i, 1);
+    const gapPrev = sameBehind
+      ? n.startTimeSeconds - (sameBehind.startTimeSeconds + sameBehind.durationSeconds)
       : Infinity;
-    const gapNext = next
-      ? next.startTimeSeconds - (n.startTimeSeconds + n.durationSeconds)
+    const gapNext = sameAhead
+      ? sameAhead.startTimeSeconds - (n.startTimeSeconds + n.durationSeconds)
       : Infinity;
-    const samePrev = Boolean(prev && prev.pitchMidi === n.pitchMidi && gapPrev < 0.22);
-    const sameNext = Boolean(next && next.pitchMidi === n.pitchMidi && gapNext < 0.14);
+    const samePrev = Boolean(sameBehind && gapPrev < 0.22);
+    const sameNext = Boolean(sameAhead && gapNext < 0.14);
     if (short && (samePrev || sameNext) && !shortPitchRun(notes, i)) {
       continue;
     }
@@ -183,8 +204,9 @@ function shortPitchRun(notes: BasicPitchNote[], i: number): boolean {
 }
 
 /**
- * Bass doubled under a vocal note (midi < 62 while a midi≥64 overlaps or
- * starts with it). Sequential C4 after E4 is melody, not accompaniment.
+ * Bass doubled under a vocal note (midi < 62 while a midi≥64 overlaps,
+ * starts with it, or is the same pitch class an octave up). Sequential C4
+ * after E4 is a third — melody, not an octave double.
  */
 function dropBassUnderMelody(notes: BasicPitchNote[]): BasicPitchNote[] {
   return notes.filter((n, i) => {
@@ -197,7 +219,8 @@ function dropBassUnderMelody(notes: BasicPitchNote[]): BasicPitchNote[] {
       const o1 = o0 + o.durationSeconds;
       const overlap = Math.min(n1, o1) - Math.max(n0, o0);
       const startDelta = Math.abs(o0 - n0);
-      return overlap > 0.04 || startDelta < 0.12;
+      const octaveDouble = Math.abs(Math.round(o.pitchMidi) - Math.round(n.pitchMidi)) % 12 === 0;
+      return overlap > 0.04 || startDelta < 0.12 || (octaveDouble && startDelta < 0.45);
     });
   });
 }
@@ -317,9 +340,13 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
       out.push(cloneNote(cur));
       continue;
     }
-    // Rest or gap after this same-pitch run: keep re-attacks split.
-    // Still merge 16th chops of one beat (startDelta < 0.28, no gap).
-    if (cur.pitchMidi === prev.pitchMidi && samePitchRunHasRestAfter(notes, i)) {
+    // Rest or gap after this same-pitch run: keep quarter re-attacks split.
+    // Short tails (stutter before the next degree) still merge.
+    if (
+      cur.pitchMidi === prev.pitchMidi &&
+      cur.durationSeconds >= SHORT &&
+      samePitchRunHasRestAfter(notes, i)
+    ) {
       const newAttack = startDelta >= 0.28 || gap >= 0.08;
       if (newAttack) {
         prev.durationSeconds = Math.max(

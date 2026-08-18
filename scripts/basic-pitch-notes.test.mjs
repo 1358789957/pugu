@@ -47,10 +47,23 @@ test("pickMelodyNotes ignores a short same-pitch ghost between two notes", () =>
   assert.equal(picked[1].startTimeSeconds, 0.88);
 });
 
+test("pickMelodyNotes drops a short same-pitch stutter even with a low note in between", () => {
+  const events = [
+    ev({ startTimeSeconds: 2.497, durationSeconds: 0.372, pitchMidi: 71, amplitude: 0.74 }),
+    ev({ startTimeSeconds: 2.72, durationSeconds: 0.12, pitchMidi: 60, amplitude: 0.3 }),
+    ev({ startTimeSeconds: 2.869, durationSeconds: 0.104, pitchMidi: 71, amplitude: 0.79 }),
+    ev({ startTimeSeconds: 3.066, durationSeconds: 0.221, pitchMidi: 72, amplitude: 0.68 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [71, 72],
+  );
+});
+
 test("pickMelodyNotes drops a short same-pitch stutter before the next degree", () => {
   // From-0 Basic Pitch on hirumawari: extra B (7) before C (1). Keep one 7.
   const events = [
-    ev({ startTimeSeconds: 2.497, durationSeconds: 0.197, pitchMidi: 71, amplitude: 0.74 }),
+    ev({ startTimeSeconds: 2.497, durationSeconds: 0.372, pitchMidi: 71, amplitude: 0.74 }),
     ev({ startTimeSeconds: 2.869, durationSeconds: 0.104, pitchMidi: 71, amplitude: 0.79 }),
     ev({ startTimeSeconds: 3.066, durationSeconds: 0.221, pitchMidi: 72, amplitude: 0.68 }),
   ];
@@ -224,6 +237,18 @@ test("pickMelodyNotes does not merge same-pitch re-attacks when a rest follows t
   events.push(ev({ startTimeSeconds: 2.28, durationSeconds: 0.4, pitchMidi: 64 }));
   const run = pickMelodyNotes(events).filter((n) => n.pitchMidi === 65);
   assert.equal(run.length, 5);
+});
+
+test("pickMelodyNotes drops a sequential octave double under the melody", () => {
+  const events = [
+    ev({ startTimeSeconds: 1.0, durationSeconds: 0.4, pitchMidi: 71 }),
+    ev({ startTimeSeconds: 1.18, durationSeconds: 0.3, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 1.5, durationSeconds: 0.4, pitchMidi: 72 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [71, 72],
+  );
 });
 
 test("pickMelodyNotes keeps sequential low 1s after a high 2 and a 2-ghost", () => {
