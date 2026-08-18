@@ -71,6 +71,17 @@ test("pickMelodyNotes keeps a lone short syllable (G-audio 7 before 1)", () => {
   );
 });
 
+test("pickMelodyNotes keeps a run of short same-pitch syllables from collapsing to one onset", () => {
+  const events = [
+    ev({ startTimeSeconds: 8.028, durationSeconds: 0.12, pitchMidi: 67, amplitude: 0.63 }),
+    ev({ startTimeSeconds: 8.18, durationSeconds: 0.12, pitchMidi: 67, amplitude: 0.73 }),
+    ev({ startTimeSeconds: 8.34, durationSeconds: 0.12, pitchMidi: 67, amplitude: 0.62 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.ok(picked.length >= 1);
+  assert.ok(picked.every((n) => n.pitchMidi === 67));
+});
+
 test("pickMelodyNotes keeps the C-major 2 2 pair (two Ds / G-audio two As)", () => {
   // Notes 11–12 of 12323432712271. In G they are two As ~0.52s apart, ~0.19s each.
   const events = [

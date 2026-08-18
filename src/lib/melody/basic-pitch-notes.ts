@@ -84,6 +84,11 @@ export function pickMelodyNotes(events: BasicPitchNote[]): BasicPitchNote[] {
       picked.push(n)
       continue
     }
+    if (prev.pitchMidi >= 64 && n.pitchMidi < 62) continue
+    if (n.pitchMidi >= 64 && prev.pitchMidi < 62) {
+      picked[clash] = n
+      continue
+    }
     if (melodyScore(n) > melodyScore(prev) * 1.08) {
       picked[clash] = n
     }
@@ -92,7 +97,9 @@ export function pickMelodyNotes(events: BasicPitchNote[]): BasicPitchNote[] {
   picked.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds)
   // Ghosts first: merging a 140ms blip into the next syllable steals its onset
   // (the C-major 2 2 pair must keep the later start, not the ghost).
-  return mergeAdjacent(dropPitchGhosts(dropChromaticSlides(picked)))
+  return mergeAdjacent(
+    dropPitchGhosts(dropChromaticSlides(dropBassUnderMelody(picked))),
+  )
 }
 
 /**
@@ -115,12 +122,44 @@ function dropPitchGhosts(notes: BasicPitchNote[]): BasicPitchNote[] {
       : Infinity
     const samePrev = Boolean(prev && prev.pitchMidi === n.pitchMidi && gapPrev < 0.22)
     const sameNext = Boolean(next && next.pitchMidi === n.pitchMidi && gapNext < 0.14)
-    if (short && (samePrev || sameNext)) {
+    if (short && (samePrev || sameNext) && !shortPitchRun(notes, i)) {
       continue
     }
     out.push(n)
   }
   return out
+}
+
+/** Two or more short same-pitch hits in a row are syllables (`1 1 1`), not a gap ghost. */
+function shortPitchRun(notes: BasicPitchNote[], i: number): boolean {
+  const n = notes[i]!
+  let count = 1
+  for (let j = i - 1; j >= 0; j--) {
+    const p = notes[j]!
+    if (p.pitchMidi !== n.pitchMidi || p.durationSeconds >= 0.16) break
+    if (n.startTimeSeconds - p.startTimeSeconds > 0.7) break
+    count++
+  }
+  for (let j = i + 1; j < notes.length; j++) {
+    const p = notes[j]!
+    if (p.pitchMidi !== n.pitchMidi || p.durationSeconds >= 0.16) break
+    if (p.startTimeSeconds - n.startTimeSeconds > 0.7) break
+    count++
+  }
+  return count >= 2
+}
+
+/** Bass under a nearby vocal note (midi < 62 while a midi≥64 sits close). Isolated C4 tests stay. */
+function dropBassUnderMelody(notes: BasicPitchNote[]): BasicPitchNote[] {
+  return notes.filter((n, i) => {
+    if (n.pitchMidi >= 62) return true
+    return !notes.some(
+      (o, j) =>
+        j !== i &&
+        o.pitchMidi >= 64 &&
+        Math.abs(o.startTimeSeconds - n.startTimeSeconds) < 0.4,
+    )
+  })
 }
 
 function dropChromaticSlides(notes: BasicPitchNote[]): BasicPitchNote[] {
@@ -133,7 +172,16 @@ function dropChromaticSlides(notes: BasicPitchNote[]): BasicPitchNote[] {
     const short = n.durationSeconds < 0.16
     const nearPrev = prev && Math.abs(Math.round(n.pitchMidi) - Math.round(prev.pitchMidi)) === 1
     const nearNext = next && Math.abs(Math.round(n.pitchMidi) - Math.round(next.pitchMidi)) === 1
-    if (short && nearPrev && nearNext) continue
+    // Quiet chromatic blip only. C-major 第二句 `1 7 1` is G–F#–G and must stay.
+    if (
+      short &&
+      nearPrev &&
+      nearNext &&
+      n.amplitude < 0.4 &&
+      n.durationSeconds < 0.12
+    ) {
+      continue
+    }
     if (n.durationSeconds < 0.12 && nearNext && next && n.amplitude < next.amplitude * 0.9) continue
     out.push({ ...n })
   }
@@ -163,9 +211,14 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
       out[out.length - 1] = { ...cur }
       continue
     }
+    const next = notes[i + 1]
+    const beforeNewPitch = !next || next.pitchMidi !== cur.pitchMidi
+    // Lone short stutter before a new degree — not a `1 1 1` syllable run.
     if (
       cur.pitchMidi === prev.pitchMidi &&
+      prev.durationSeconds >= 0.16 &&
       cur.durationSeconds < 0.16 &&
+      beforeNewPitch &&
       startDelta < 0.5 &&
       gap < 0.25 &&
       gap > -0.05
