@@ -59,6 +59,20 @@ test("continueWavelength interpolates a short dropout of the same period", () =>
   assert.ok(hole.every((f) => Math.round(f.midi) === 62));
 });
 
+test("continueWavelength leaves a quiet 0.1s gap as a rest, not a hold", () => {
+  const raw = [];
+  for (let t = 0; t <= 0.9; t += 0.01) {
+    const voiced = t < 0.4 || t >= 0.5;
+    raw.push(frame(t, voiced ? D4 : 0, { voiced, rms: voiced ? 0.02 : 0.001 }));
+  }
+  const filled = continueWavelength(raw, SR);
+  const gap = filled.filter((f) => f.t >= 0.41 && f.t <= 0.48);
+  assert.ok(gap.length >= 5);
+  assert.ok(gap.every((f) => !f.filled && f.hz === 0));
+  const notes = notesFromFilledContour(filled);
+  assert.ok(notes.filter((n) => Math.round(n.pitchMidi) === 62).length >= 2);
+});
+
 test("continueWavelength leaves a long rest as a break", () => {
   const raw = [];
   for (let t = 0; t <= 0.6; t += 0.01) {

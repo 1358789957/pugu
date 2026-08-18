@@ -182,16 +182,23 @@ function shortPitchRun(notes: BasicPitchNote[], i: number): boolean {
   return count >= 2;
 }
 
-/** Bass under a nearby vocal note (midi < 62 while a midi≥64 sits close). Isolated C4 tests stay. */
+/**
+ * Bass doubled under a vocal note (midi < 62 while a midi≥64 overlaps or
+ * starts with it). Sequential C4 after E4 is melody, not accompaniment.
+ */
 function dropBassUnderMelody(notes: BasicPitchNote[]): BasicPitchNote[] {
   return notes.filter((n, i) => {
     if (n.pitchMidi >= 62) return true;
-    return !notes.some(
-      (o, j) =>
-        j !== i &&
-        o.pitchMidi >= 64 &&
-        Math.abs(o.startTimeSeconds - n.startTimeSeconds) < 0.4,
-    );
+    const n0 = n.startTimeSeconds;
+    const n1 = n0 + n.durationSeconds;
+    return !notes.some((o, j) => {
+      if (j === i || o.pitchMidi < 64) return false;
+      const o0 = o.startTimeSeconds;
+      const o1 = o0 + o.durationSeconds;
+      const overlap = Math.min(n1, o1) - Math.max(n0, o0);
+      const startDelta = Math.abs(o0 - n0);
+      return overlap > 0.04 || startDelta < 0.12;
+    });
   });
 }
 
@@ -253,6 +260,26 @@ export function isSyllableRun(notes: BasicPitchNote[], i: number): boolean {
   return Boolean(next && next.startTimeSeconds - end >= 0.12);
 }
 
+/** Gap from the last consecutive same-pitch note to the next degree (or +∞). */
+function restAfterSamePitchGroup(notes: BasicPitchNote[], i: number): number {
+  const pitch = Math.round(notes[i]!.pitchMidi);
+  let k = i;
+  while (k + 1 < notes.length && Math.round(notes[k + 1]!.pitchMidi) === pitch) k += 1;
+  const last = notes[k]!;
+  const nxt = notes[k + 1];
+  if (!nxt) return Number.POSITIVE_INFINITY;
+  return nxt.startTimeSeconds - (last.startTimeSeconds + last.durationSeconds);
+}
+
+/**
+ * Same-pitch quarters/re-attacks with a rest (or gap) before the next degree.
+ * Do not glue those into one hold — a miss here must stay local.
+ */
+function samePitchRunHasRestAfter(notes: BasicPitchNote[], i: number): boolean {
+  const rest = restAfterSamePitchGroup(notes, i);
+  return rest >= 0.08 && Number.isFinite(rest);
+}
+
 function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
   if (notes.length === 0) return notes;
   const out: BasicPitchNote[] = [cloneNote(notes[0]!)];
@@ -265,13 +292,12 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
       cur.pitchMidi === prev.pitchMidi &&
       prev.durationSeconds < SHORT &&
       cur.durationSeconds >= SHORT &&
-      startDelta > 0.12
+      startDelta > 0.12 &&
+      (startDelta < 0.18 || !samePitchRunHasRestAfter(notes, i))
     ) {
       out[out.length - 1] = cloneNote(cur);
       continue;
     }
-    const next = notes[i + 1];
-    const beforeNewPitch = !next || next.pitchMidi !== cur.pitchMidi;
     const span =
       Math.max(prev.startTimeSeconds + prev.durationSeconds, cur.startTimeSeconds + cur.durationSeconds) -
       prev.startTimeSeconds;
@@ -290,6 +316,19 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
     if (cur.pitchMidi === prev.pitchMidi && isSyllableRun(notes, i)) {
       out.push(cloneNote(cur));
       continue;
+    }
+    // Rest or gap after this same-pitch run: keep re-attacks split.
+    // Still merge 16th chops of one beat (startDelta < 0.28, no gap).
+    if (cur.pitchMidi === prev.pitchMidi && samePitchRunHasRestAfter(notes, i)) {
+      const newAttack = startDelta >= 0.28 || gap >= 0.08;
+      if (newAttack) {
+        prev.durationSeconds = Math.max(
+          0.05,
+          Math.min(prev.durationSeconds, cur.startTimeSeconds - prev.startTimeSeconds),
+        );
+        out.push(cloneNote(cur));
+        continue;
+      }
     }
     // One triangle/BP note chopped into two onsets (combined span still one beat).
     // Short syllable runs stay; only merge when the first piece is already a hold.
@@ -349,7 +388,6 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
       prev.amplitude = Math.max(prev.amplitude, cur.amplitude);
       continue;
     }
-    void beforeNewPitch;
     out.push(cloneNote(cur));
   }
   return out;

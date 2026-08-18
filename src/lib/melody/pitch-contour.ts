@@ -123,6 +123,10 @@ export function continueWavelength(frames: ContourFrame[], sampleRate = BASIC_PI
     const right = end < out.length ? out[end] : null;
     const dur = out[end - 1]!.t - out[start]!.t + hop;
     if (dur >= REST_SEC) continue;
+    let gapRms = 0;
+    for (let k = start; k < end; k++) gapRms = Math.max(gapRms, out[k]!.rms);
+    // Quiet gap is a rest between re-attacks, not a tuner dropout.
+    if (gapRms < 0.008 && dur >= 0.06) continue;
     if (left?.voiced && right?.voiced && periodRatio(left.periodSec, right.periodSec) <= SAME_PERIOD) {
       const n = end - start;
       for (let k = 0; k < n; k++) {
@@ -153,12 +157,14 @@ export function continueWavelength(frames: ContourFrame[], sampleRate = BASIC_PI
       const f = out[j]!;
       if (f.voiced || f.filled) break;
       if (out[isl.lo]!.t - f.t > 0.1) break;
+      if (f.rms < 0.008) break;
       holdFrame(f, proto, sampleRate);
     }
     for (let j = isl.hi + 1; j < out.length; j++) {
       const f = out[j]!;
       if (f.voiced || f.filled) break;
       if (f.t - out[isl.hi]!.t > 0.1) break;
+      if (f.rms < 0.008) break;
       holdFrame(f, proto, sampleRate);
     }
   }

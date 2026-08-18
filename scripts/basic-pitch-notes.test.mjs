@@ -200,6 +200,46 @@ test("pickMelodyNotes keeps X Y Y when the second Y is long", () => {
   );
 });
 
+test("pickMelodyNotes keeps a lower neighbor between same-pitch quarters", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.4, durationSeconds: 0.4, pitchMidi: 64 }),
+    ev({ startTimeSeconds: 0.9, durationSeconds: 0.4, pitchMidi: 64 }),
+    ev({ startTimeSeconds: 1.4, durationSeconds: 0.36, pitchMidi: 60 }),
+    ev({ startTimeSeconds: 1.9, durationSeconds: 0.4, pitchMidi: 64 }),
+    ev({ startTimeSeconds: 2.4, durationSeconds: 0.4, pitchMidi: 64 }),
+    ev({ startTimeSeconds: 2.9, durationSeconds: 0.4, pitchMidi: 60 }),
+    ev({ startTimeSeconds: 3.4, durationSeconds: 0.4, pitchMidi: 62 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [64, 64, 60, 64, 64, 60, 62],
+  );
+});
+
+test("pickMelodyNotes does not merge same-pitch re-attacks when a rest follows the run", () => {
+  const events = [];
+  for (let i = 0; i < 5; i++) {
+    events.push(ev({ startTimeSeconds: 0.4 + i * 0.35, durationSeconds: 0.32, pitchMidi: 65 }));
+  }
+  events.push(ev({ startTimeSeconds: 2.28, durationSeconds: 0.4, pitchMidi: 64 }));
+  const run = pickMelodyNotes(events).filter((n) => n.pitchMidi === 65);
+  assert.equal(run.length, 5);
+});
+
+test("pickMelodyNotes keeps sequential low 1s after a high 2 and a 2-ghost", () => {
+  const events = [
+    ev({ startTimeSeconds: 1.87, durationSeconds: 0.35, pitchMidi: 73 }),
+    ev({ startTimeSeconds: 2.23, durationSeconds: 0.08, pitchMidi: 73 }),
+    ev({ startTimeSeconds: 2.39, durationSeconds: 0.34, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 2.9, durationSeconds: 0.34, pitchMidi: 59 }),
+    ev({ startTimeSeconds: 3.39, durationSeconds: 0.35, pitchMidi: 73 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [73, 59, 59, 73],
+  );
+});
+
 test("pickMelodyNotes keeps 0.5s same-pitch quarters and merges a chopped hold", () => {
   const quarters = [];
   for (let i = 0; i < 5; i++) {
