@@ -8,11 +8,15 @@ export type LyricLine = {
 
 export type LeadCell = {
   name: string;
+  jianpu: string;
   midi: number;
   start: number;
   duration: number;
   lyric: string;
   chord: string;
+  bar: boolean;
+  under: 0 | 1 | 2;
+  dash: string;
 };
 
 export type LeadLine = {
@@ -21,6 +25,27 @@ export type LeadLine = {
   text: string;
   cells: LeadCell[];
 };
+
+/** Numbered notation relative to the song key. G4 in G major → 1 */
+export function midiToJianpu(midi: number, tonic: number, centerMidi = 67): string {
+  const rounded = Math.round(midi);
+  const pc = ((rounded % 12) + 12) % 12;
+  const tpc = ((tonic % 12) + 12) % 12;
+  const rel = (pc - tpc + 12) % 12;
+  const table = ["1", "#1", "2", "#2", "3", "4", "#4", "5", "#5", "6", "#6", "7"];
+  const num = table[rel] ?? "1";
+  let tonicMidi = 48 + tpc;
+  while (tonicMidi < centerMidi - 6) tonicMidi += 12;
+  while (tonicMidi > centerMidi + 6) tonicMidi -= 12;
+  const off = Math.floor((rounded - tonicMidi) / 12);
+  if (off > 0) return num + "'".repeat(off);
+  if (off < 0) return num + ",".repeat(-off);
+  return num;
+}
+
+export function keyJianpuLabel(tonic: number, flats = false): string {
+  return `1=${midiName(60 + (((tonic % 12) + 12) % 12), flats).replace(/\d/g, "").replace("♯", "#").replace("♭", "b")}`;
+}
 
 export function melodyPhrases(notes: NoteEvent[], maxLen = 7.2): { start: number; end: number }[] {
   const sung = notes.filter((n) => n.duration >= 0.08 && n.confidence > 0.28);
@@ -111,7 +136,10 @@ export function assignLyrics(
 
 export function buildLeadSheet(result: AnalysisResult, lyrics: LyricLine[]): LeadLine[] {
   const flats = prefersFlats(result.key.tonic, result.key.mode);
+  const tonic = result.key.tonic;
   const notes = result.notes.filter((n) => n.duration >= 0.08);
+  const midis = notes.map((n) => n.midi).sort((a, b) => a - b);
+  const center = midis.length ? midis[Math.floor(midis.length / 2)] : 67;
   const spans = lyrics.length
     ? lyrics
     : melodyPhrases(notes).map((p) => ({ start: p.start, end: p.end, text: "" }));
@@ -122,14 +150,26 @@ export function buildLeadSheet(result: AnalysisResult, lyrics: LyricLine[]): Lea
     );
     const tokens = tokenizeLyric(line.text);
     const picked = tokens.length ? thinNotes(inLine, tokens.length) : inLine;
-    const cells: LeadCell[] = picked.map((n, i) => ({
-      name: midiName(n.midi, flats).replace("♯", "#").replace("♭", "b"),
-      midi: n.midi,
-      start: n.start,
-      duration: n.duration,
-      lyric: tokens.length ? (tokens[i] ?? "") : "",
-      chord: "",
-    }));
+    const beat = 60 / Math.max(40, result.bpm || 100);
+    const origin = notes[0]?.start ?? 0;
+    const cells: LeadCell[] = picked.map((n, i) => {
+      const beats = n.duration / beat;
+      const under: 0 | 1 | 2 = beats < 0.4 ? 2 : beats < 0.75 ? 1 : 0;
+      const dash = beats >= 3.5 ? "—" : beats >= 1.6 ? "-" : "";
+      const step = Math.round((n.start - origin) / beat);
+      return {
+        name: midiName(n.midi, flats).replace("♯", "#").replace("♭", "b"),
+        jianpu: midiToJianpu(n.midi, tonic, center),
+        midi: n.midi,
+        start: n.start,
+        duration: n.duration,
+        lyric: tokens.length ? (tokens[i] ?? "") : "",
+        chord: "",
+        bar: ((step % 4) + 4) % 4 === 0,
+        under,
+        dash,
+      };
+    });
     if (tokens.length > cells.length && cells.length) {
       cells[cells.length - 1].lyric = tokens.slice(cells.length - 1).join("");
     }
@@ -142,11 +182,15 @@ export function buildLeadSheet(result: AnalysisResult, lyrics: LyricLine[]): Lea
     if (!cells.length && line.text) {
       cells.push({
         name: "",
+        jianpu: "",
         midi: 0,
         start: line.start,
         duration: Math.max(0.4, line.end - line.start),
         lyric: line.text,
         chord: chordAt(result.chords, line.start),
+        bar: true,
+        under: 0,
+        dash: "",
       });
     }
     return {
@@ -160,7 +204,7 @@ export function buildLeadSheet(result: AnalysisResult, lyrics: LyricLine[]): Lea
 
 export function leadSheetPlainText(lines: LeadLine[], title: string, key: string, bpm: number): string {
   const blocks = lines.map((line) => {
-    const names = line.cells.map((c) => c.name.padEnd(4, " ")).join(" ");
+    const names = line.cells.map((c) => (c.jianpu || c.name).padEnd(4, " ")).join(" ");
     const words = line.cells.map((c) => (c.lyric || "·").padEnd(4, " ")).join(" ");
     const chords = line.cells.map((c) => (c.chord || "").padEnd(4, " ")).join(" ");
     return `${names}\n${words}\n${chords}`.replace(/[ \t]+$/gm, "");
@@ -168,7 +212,6 @@ export function leadSheetPlainText(lines: LeadLine[], title: string, key: string
   return `${title}\n${key} · ${Math.round(bpm)} BPM\n\n${blocks.join("\n\n")}\n`;
 }
 
-/** Timed lyrics for 昼回のメモリー (from the uploaded vocal take). */
 export const HIRUMAWARI_LYRICS: LyricLine[] = [
   { start: 1.1, end: 5.2, text: "雨 の 匂 い 駅 前 の" },
   { start: 5.2, end: 8.4, text: "道 で 傘 の 影 に 二 人" },

@@ -2,11 +2,12 @@ import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   buildLeadSheet,
+  keyJianpuLabel,
   leadSheetPlainText,
   type LeadLine,
   type LyricLine,
 } from "@/lib/melody/leadsheet";
-import type { AnalysisResult } from "@/lib/melody/notes";
+import { prefersFlats, type AnalysisResult } from "@/lib/melody/notes";
 import { cn, downloadBlob } from "@/lib/utils";
 
 export function LeadSheet({
@@ -29,9 +30,11 @@ export function LeadSheet({
   title: string;
 }) {
   const lines = useMemo(() => buildLeadSheet(result, lyrics), [result, lyrics]);
+  const flats = prefersFlats(result.key.tonic, result.key.mode);
+  const keyMark = keyJianpuLabel(result.key.tonic, flats);
   const plain = useMemo(
-    () => leadSheetPlainText(lines, title || "词谱", result.key.name, result.bpm),
-    [lines, title, result.key.name, result.bpm],
+    () => leadSheetPlainText(lines, title || "词谱", `${keyMark} ${result.key.name}`, result.bpm),
+    [lines, title, keyMark, result.key.name, result.bpm],
   );
 
   function copy() {
@@ -45,7 +48,7 @@ export function LeadSheet({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-subtle">一句一行 · 上音符 · 中歌词 · 下和弦 · 点一行可定位</p>
+        <p className="text-xs text-subtle">简谱写法 · 上数字 · 中歌词 · 下和弦</p>
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" onClick={copy}>
             复制文本
@@ -56,15 +59,23 @@ export function LeadSheet({
         </div>
       </div>
 
-      <div className="space-y-3">
-        {lines.map((line, i) => (
-          <LeadRow
-            key={`${line.start}-${i}`}
-            line={line}
-            active={currentTime >= line.start && currentTime < line.start + line.duration}
-            onSeek={onSeek}
-          />
-        ))}
+      <div className="rounded-xl border border-border bg-paper px-5 py-5 text-ink">
+        <div className="border-b border-ink/15 pb-3 text-center">
+          <h2 className="font-display text-xl font-semibold tracking-wide">{title || "词谱"}</h2>
+          <p className="mt-1 font-mono text-xs text-ink/60">
+            {keyMark}　4/4　{Math.round(result.bpm)} 拍　{result.key.name}
+          </p>
+        </div>
+        <div className="mt-4 space-y-5">
+          {lines.map((line, i) => (
+            <LeadRow
+              key={`${line.start}-${i}`}
+              line={line}
+              active={currentTime >= line.start && currentTime < line.start + line.duration}
+              onSeek={onSeek}
+            />
+          ))}
+        </div>
       </div>
 
       <label className="block">
@@ -99,34 +110,58 @@ function LeadRow({
       type="button"
       onClick={() => onSeek(line.start)}
       className={cn(
-        "w-full overflow-x-auto rounded-xl border px-3 py-3 text-left transition-colors",
-        active ? "border-accent/40 bg-elevated" : "border-border bg-surface hover:border-accent/25",
+        "w-full overflow-x-auto rounded-md px-1 py-1 text-left",
+        active ? "bg-ink/5" : "hover:bg-ink/[0.03]",
       )}
     >
       <div
         className="min-w-max"
         style={{
           display: "grid",
-          gridTemplateColumns: `repeat(${cols}, minmax(2.4rem, 1fr))`,
-          rowGap: "0.35rem",
-          columnGap: "0.15rem",
+          gridTemplateColumns: `repeat(${cols}, minmax(2.1rem, 1fr))`,
+          rowGap: "0.12rem",
+          columnGap: "0.1rem",
         }}
       >
         {line.cells.map((c, i) => (
-          <div key={`n${i}`} className="text-center font-mono text-[11px] tabular-nums text-muted">
-            {c.name}
+          <div
+            key={`n${i}`}
+            className={cn(
+              "text-center font-mono text-[16px] font-medium tabular-nums text-ink",
+              c.bar && i > 0 && "border-l border-ink/50",
+            )}
+          >
+            <span
+              className={cn(
+                "inline-block min-w-[1.1em]",
+                c.under === 1 && "border-b border-ink",
+                c.under === 2 && "border-b-2 border-ink",
+              )}
+            >
+              {c.jianpu || c.name}
+              {c.dash ? <span className="ml-0.5 text-ink/70">{c.dash}</span> : null}
+            </span>
           </div>
         ))}
         {line.cells.map((c, i) => (
           <div
             key={`w${i}`}
-            className="text-center font-display text-[17px] font-medium leading-8 text-fg"
+            className={cn(
+              "pt-0.5 text-center font-display text-[17px] font-medium leading-8 text-ink",
+              c.bar && i > 0 && "border-l border-ink/20",
+            )}
           >
             {c.lyric || (line.text && i === 0 ? line.text : "")}
           </div>
         ))}
         {line.cells.map((c, i) => (
-          <div key={`c${i}`} className="text-center font-mono text-xs font-medium text-accent">
+          <div
+            key={`c${i}`}
+            className={cn(
+              "text-center font-mono text-[11px] font-semibold text-ink/65",
+              c.bar && i > 0 && "border-l border-ink/20",
+            )}
+          >
             {c.chord}
           </div>
         ))}
