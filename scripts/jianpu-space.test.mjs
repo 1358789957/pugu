@@ -16,6 +16,7 @@ import {
   expectedSynthDegrees,
   publishedToScore,
   scoreAlignment,
+  scorePhraseSet,
   stripOctaveMarks,
 } from "../src/lib/melody/pop-phrase-fixtures.ts";
 import { POP_FULL_FIXTURES, fullPopById } from "../src/lib/melody/pop-full-fixtures.ts";
@@ -90,6 +91,12 @@ test("POP_FULL_FIXTURES is the 11 pop songs; 昼回 is not in this set", () => {
     ],
   );
   assert.ok(POP_FULL_FIXTURES.every((s) => s.publishedFullMovableDo.length >= 80));
+  assert.ok(POP_FULL_FIXTURES.every((s) => s.phrases.length >= 8));
+  assert.ok(
+    POP_FULL_FIXTURES.every(
+      (s) => s.phrases.flatMap((p) => [...p.publishedMovableDo]).join(" ") === s.publishedFullMovableDo.join(" "),
+    ),
+  );
   assert.ok(!POP_FULL_FIXTURES.some((s) => /小星星|欢乐颂|生日快乐|两只老虎/i.test(s.id)));
   assert.equal(fullPopById("hirumawari-1"), undefined);
 });
@@ -119,6 +126,29 @@ test("first-line fixtures are prefixes of the full unique vocal (documented exce
   assert.ok(!prefixOf(houlai, HOULAI_PUBLISHED));
   const verseAt = houlai.findIndex((_, i) => HOULAI_PUBLISHED.every((d, j) => houlai[i + j] === d));
   assert.ok(verseAt > 0, "栀子花 line must appear after the printed chorus");
+});
+
+test("scorePhraseSet is local: an extra in phrase 0 does not shift phrase 1", () => {
+  const expected = [
+    ["1", "2", "3", "4"],
+    ["5", "6", "7", "1"],
+  ];
+  const actual = [
+    ["1", "2", "x", "3", "4"],
+    ["5", "6", "7", "1"],
+  ];
+  const set = scorePhraseSet(actual, expected);
+  assert.equal(set.nPhrases, 2);
+  assert.equal(set.phrases[0].exact, false);
+  assert.equal(set.phrases[0].extra, 1);
+  assert.equal(set.phrases[0].missing, 0);
+  assert.equal(set.phrases[1].exact, true);
+  assert.equal(set.phrases[1].accuracy, 1);
+  assert.equal(set.exactPhrases, 1);
+  assert.equal(set.matched, 8);
+  assert.equal(set.expectedLen, 8);
+  const concat = scoreAlignment(actual.flat(), expected.flat());
+  assert.equal(concat.exact, false);
 });
 
 test("scoreAlignment is LCS / expected with extra and missing", () => {

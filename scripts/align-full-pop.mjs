@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { POP_FULL_FIXTURES } from "../src/lib/melody/pop-full-fixtures.ts";
@@ -9,6 +9,7 @@ import {
   expectedSynthDegrees,
   publishedToScore,
   scoreAlignment,
+  scorePhraseSet,
   synthTonicMidi,
 } from "../src/lib/melody/pop-phrase-fixtures.ts";
 import { renderScoreSamples } from "../src/lib/melody/render-score.ts";
@@ -16,7 +17,6 @@ import { cMajorDegrees, jianpuDegree } from "../src/lib/melody/leadsheet.ts";
 import { pickMelodyNotes, toPuguNotes } from "../src/lib/melody/basic-pitch-notes.ts";
 import { refineMelody } from "../src/lib/melody/refine-melody.ts";
 import { transcribeWavSamples } from "./run-basic-pitch-wav.mjs";
-import { existsSync } from "node:fs";
 import { readWavMono16, sliceSeconds } from "./wav-pcm.mjs";
 import {
   HIRUMAWARI_AUDIO_TONIC,
@@ -28,6 +28,10 @@ import {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VOCAL_WAV = join(root, "examples/hirumawari/昼回のメモリー-人声.wav");
+
+/** Silence around each vocal line so phrase k cannot leak into k+1. */
+const PHRASE_LEAD = 0.4;
+const PHRASE_TAIL = 0.7;
 
 function degreesOf(notes, fromTonic) {
   return {
@@ -48,7 +52,7 @@ async function transcribeSamples(samples, sampleRate, fromTonic) {
   return degreesOf(notes, fromTonic);
 }
 
-async function transcribePublished(published, tonicMidi, tonicPc, gap = 0.1) {
+async function transcribePublishedPhrase(published, tonicMidi, tonicPc, gap = 0.1) {
   const tonic = synthTonicMidi(published, tonicMidi);
   const score = publishedToScore(published, tonic).map((n) => ({
     ...n,
@@ -57,6 +61,8 @@ async function transcribePublished(published, tonicMidi, tonicPc, gap = 0.1) {
   const { samples, sampleRate } = renderScoreSamples(score, {
     bpm: SYNTH_ALIGN_BPM,
     gap,
+    lead: PHRASE_LEAD,
+    tail: PHRASE_TAIL,
   });
   const secs = samples.length / sampleRate;
   return { transcribed: await transcribeSamples(samples, sampleRate, tonicPc), secs, nSynth: score.length };
@@ -71,58 +77,106 @@ function mean(xs) {
 }
 
 export function formatFullPopTable(rows) {
-  const header = "id\ttitle\tspan\tn_expected\tn_matched\tacc\textra\tmiss\texact";
+  const header = "id\ttitle\tspan\tn_phrases\tmean_acc\tphrase_exact\tmicro\textra\tmiss";
   const body = rows.map((r) => {
     const s = r.score;
     return [
       r.id,
       r.title,
       `${r.span} n=${s.expectedLen}`,
-      s.expectedLen,
-      s.matched,
-      pct(s.accuracy),
+      s.nPhrases,
+      pct(s.meanAcc),
+      `${s.exactPhrases}/${s.nPhrases} (${pct(s.phraseExactRate)})`,
+      `${s.matched}/${s.expectedLen} (${pct(s.microAcc)})`,
       s.extra,
       s.missing,
-      s.exact ? "yes" : "no",
     ].join("\t");
   });
-  const accs = rows.map((r) => r.score.accuracy);
-  const exact = rows.filter((r) => r.score.exact).length;
+  const songMean = mean(rows.map((r) => r.score.meanAcc));
+  const microM = rows.reduce((a, r) => a + r.score.matched, 0);
+  const microE = rows.reduce((a, r) => a + r.score.expectedLen, 0);
+  const exactP = rows.reduce((a, r) => a + r.score.exactPhrases, 0);
+  const nP = rows.reduce((a, r) => a + r.score.nPhrases, 0);
+  const extra = rows.reduce((a, r) => a + r.score.extra, 0);
+  const miss = rows.reduce((a, r) => a + r.score.missing, 0);
   const overall = [
     "",
-    `full_song_pop\t${rows.length}\tmean_acc=${pct(mean(accs))}\texact=${exact}/${rows.length}\texact_rate=${pct(rows.length ? exact / rows.length : 0)}`,
+    `overall\tsongs=${rows.length}\tmean_of_songs=${pct(songMean)}\tmicro=${microM}/${microE} (${pct(microE ? microM / microE : 0)})\tphrase_exact=${exactP}/${nP} (${pct(nP ? exactP / nP : 0)})\textra=${extra}\tmiss=${miss}`,
   ];
   return [
-    "FULL POP  LCS(actual, expected) / n_expected; extra = actual − matched; miss = expected − matched",
+    "FULL POP  phrase-by-phrase LCS / n_expected. One vocal line = one decode. A miss in phrase k does not shift k+1.",
     header,
     ...body,
     ...overall,
   ].join("\n");
 }
 
+export function formatWorstPhrases(rows, limit = 12) {
+  const flat = [];
+  for (const r of rows) {
+    for (const p of r.phrases) {
+      flat.push({
+        id: r.id,
+        title: r.title,
+        lyric: p.lyric,
+        want: p.expected,
+        got: p.actual,
+        score: p.score,
+      });
+    }
+  }
+  flat.sort((a, b) => {
+    const da = a.score.accuracy - b.score.accuracy;
+    if (da !== 0) return da;
+    return b.score.extra + b.score.missing - (a.score.extra + a.score.missing);
+  });
+  const worst = flat.filter((p) => !p.score.exact).slice(0, limit);
+  if (!worst.length) return "\nWORST PHRASES  none (all exact)";
+  const lines = worst.map((p) => {
+    const s = p.score;
+    return `${p.id}\t${p.lyric}\t${s.matched}/${s.expectedLen} (${pct(s.accuracy)}) extra=${s.extra} miss=${s.missing}\n  want ${p.want}\n  got  ${p.got}`;
+  });
+  return ["", `WORST PHRASES  ${worst.length} of ${flat.filter((p) => !p.score.exact).length} non-exact`, ...lines].join(
+    "\n",
+  );
+}
+
 export async function runFullPopSet(onRow) {
   const phraseById = new Map(ALIGN_SONGS.filter((s) => !s.liveAudio).map((s) => [s.id, s]));
   const rows = [];
   for (const full of POP_FULL_FIXTURES) {
-    const phrase = phraseById.get(full.id);
-    if (!phrase) throw new Error(`missing first-line fixture for ${full.id}`);
-    const published = full.publishedFullMovableDo;
-    const want = expectedSynthDegrees(published, phrase.tonicMidi, phrase.tonicPc);
+    const meta = phraseById.get(full.id);
+    if (!meta) throw new Error(`missing first-line fixture for ${full.id}`);
     const t0 = Date.now();
-    const { transcribed, secs, nSynth } = await transcribePublished(published, phrase.tonicMidi, phrase.tonicPc);
-    const score = scoreAlignment(transcribed.inC, want);
+    const phraseRows = [];
+    let synthSec = 0;
+    for (const ph of full.phrases) {
+      const published = [...ph.publishedMovableDo];
+      const want = expectedSynthDegrees(published, meta.tonicMidi, meta.tonicPc);
+      const { transcribed, secs } = await transcribePublishedPhrase(published, meta.tonicMidi, meta.tonicPc);
+      synthSec += secs;
+      const score = scoreAlignment(transcribed.inC, want);
+      phraseRows.push({
+        lyric: ph.lyric,
+        expected: want.join(" "),
+        actual: transcribed.inC.join(" "),
+        score,
+      });
+    }
+    const set = scorePhraseSet(
+      phraseRows.map((p) => p.actual.split(" ").filter(Boolean)),
+      phraseRows.map((p) => p.expected.split(" ").filter(Boolean)),
+    );
     const row = {
       id: full.id,
-      title: phrase.title,
+      title: meta.title,
       span: full.span,
       throughLyric: full.throughLyric,
       nFullVocalOnce: full.nFullVocalOnce,
       publishedKey: full.publishedKey,
-      synthSec: secs,
-      nSynth,
-      expected: want.join(" "),
-      actual: transcribed.inC.join(" "),
-      score,
+      synthSec,
+      phrases: phraseRows,
+      score: set,
       elapsedMs: Date.now() - t0,
     };
     rows.push(row);
@@ -193,20 +247,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     rows.push(row);
     const s = row.score;
     console.error(
-      `${row.id} ${row.span} n=${s.expectedLen} matched=${s.matched} acc=${pct(s.accuracy)} extra=${s.extra} miss=${s.missing} exact=${s.exact ? "yes" : "no"} synth=${row.synthSec.toFixed(1)}s ${row.elapsedMs}ms`,
+      `${row.id} ${row.span} phrases=${s.nPhrases} mean=${pct(s.meanAcc)} exact=${s.exactPhrases}/${s.nPhrases} micro=${s.matched}/${s.expectedLen} extra=${s.extra} miss=${s.missing} ${row.elapsedMs}ms`,
     );
     writeFileSync(outPath, JSON.stringify({ pop: rows }, null, 2));
   });
   const live = await runHirumawariLivePoints();
   writeFileSync(outPath, JSON.stringify({ pop, live }, null, 2));
   console.log(formatFullPopTable(pop));
+  console.log(formatWorstPhrases(pop));
   console.log(formatLiveSideGroup(live));
-  for (const r of pop) {
-    console.log(`\n${r.title}  ${r.span}  through ${r.throughLyric}`);
-    console.log(`  expected n=${r.score.expectedLen}`);
-    console.log(`  actual   n=${r.score.actualLen}`);
-    console.log(
-      `  LCS      ${r.score.matched}/${r.score.expectedLen} extra=${r.score.extra} miss=${r.score.missing} prefix=${r.score.prefix}`,
-    );
-  }
 }

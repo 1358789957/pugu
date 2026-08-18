@@ -420,6 +420,53 @@ export function lcsLength(actual: readonly string[], expected: readonly string[]
  * Sequence alignment used by the full-song pop report.
  * n_matched = LCS length; extra / missing are notes outside that common spine.
  */
+export type PhraseSetScore = {
+  phrases: AlignmentScore[];
+  nPhrases: number;
+  exactPhrases: number;
+  phraseExactRate: number;
+  /** Mean of per-phrase LCS/expected. A miss in phrase k does not move k+1. */
+  meanAcc: number;
+  matched: number;
+  expectedLen: number;
+  actualLen: number;
+  extra: number;
+  missing: number;
+  microAcc: number;
+};
+
+/** Score each phrase on its own. Concatenating would let one extra shift later lines. */
+export function scorePhraseSet(
+  actualPhrases: readonly (readonly string[])[],
+  expectedPhrases: readonly (readonly string[])[],
+): PhraseSetScore {
+  const n = expectedPhrases.length;
+  const phrases: AlignmentScore[] = [];
+  for (let i = 0; i < n; i++) {
+    phrases.push(scoreAlignment(actualPhrases[i] ?? [], expectedPhrases[i] ?? []));
+  }
+  const exactPhrases = phrases.filter((p) => p.exact).length;
+  const matched = phrases.reduce((a, p) => a + p.matched, 0);
+  const expectedLen = phrases.reduce((a, p) => a + p.expectedLen, 0);
+  const actualLen = phrases.reduce((a, p) => a + p.actualLen, 0);
+  const extra = phrases.reduce((a, p) => a + p.extra, 0);
+  const missing = phrases.reduce((a, p) => a + p.missing, 0);
+  const meanAcc = phrases.length === 0 ? 1 : phrases.reduce((a, p) => a + p.accuracy, 0) / phrases.length;
+  return {
+    phrases,
+    nPhrases: phrases.length,
+    exactPhrases,
+    phraseExactRate: phrases.length === 0 ? 1 : exactPhrases / phrases.length,
+    meanAcc,
+    matched,
+    expectedLen,
+    actualLen,
+    extra,
+    missing,
+    microAcc: expectedLen === 0 ? 1 : matched / expectedLen,
+  };
+}
+
 export function scoreAlignment(actual: readonly string[], expected: readonly string[]): AlignmentScore {
   const expectedLen = expected.length;
   const actualLen = actual.length;
