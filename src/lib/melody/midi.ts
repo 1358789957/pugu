@@ -1,7 +1,7 @@
 import { keySignatureCount, type ChordEvent, type DetectedKey, type NoteEvent } from "./notes";
 import { voicingFor } from "./chords";
 
-export const MIDI_PPQ = 480;
+export const MIDI_PPQ = 960;
 
 function vlq(value: number): number[] {
   const bytes: number[] = [value & 0x7f];

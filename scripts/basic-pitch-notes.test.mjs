@@ -134,7 +134,7 @@ test("pickMelodyNotes drops a late same-pitch trail before a third cadence", () 
   );
 });
 
-test("pickMelodyNotes keeps X Y Y (欢乐颂 3 2 2) when the second Y is long", () => {
+test("pickMelodyNotes keeps X Y Y when the second Y is long", () => {
   const events = [
     ev({ startTimeSeconds: 7.85, durationSeconds: 0.55, pitchMidi: 64, amplitude: 0.8 }),
     ev({ startTimeSeconds: 8.48, durationSeconds: 0.46, pitchMidi: 62, amplitude: 0.81 }),

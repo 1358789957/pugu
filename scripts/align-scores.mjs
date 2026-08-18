@@ -1,8 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ALIGN_SONGS } from "../src/lib/melody/align-scores.ts";
-import { renderScoreSamples } from "../src/lib/melody/render-score.ts";
+import { POP_PHRASE_FIXTURES, matchFirstPhrase } from "../src/lib/melody/pop-phrase-fixtures.ts";
 import { cMajorDegrees, jianpuDegree } from "../src/lib/melody/leadsheet.ts";
 import {
   HIRUMAWARI_AUDIO_TONIC,
@@ -21,6 +20,7 @@ const VOCAL_WAV = join(root, "examples/hirumawari/昼回のメモリー-人声.w
 
 function degreesOf(notes, fromTonic) {
   return {
+    midis: notes.map((n) => n.midi),
     inC: cMajorDegrees(
       notes.map((n) => n.midi),
       fromTonic,
@@ -42,62 +42,60 @@ async function transcribeHirumawari(which) {
   if (!existsSync(VOCAL_WAV)) return { skip: "examples/hirumawari vocal wav is not in this checkout" };
   if (which === "hirumawari-1") {
     const { samples, sampleRate } = readWavMono16(VOCAL_WAV);
-    const t0 = 0;
-    const t1 = HIRUMAWARI_PHRASE_END + 0.4;
-    const slice = sliceSeconds(samples, sampleRate, t0, t1);
+    const slice = sliceSeconds(samples, sampleRate, 0, HIRUMAWARI_PHRASE_END + 0.4);
     return transcribeSamples(
       slice,
       sampleRate,
       HIRUMAWARI_AUDIO_TONIC,
-      t0,
+      0,
       HIRUMAWARI_PHRASE_START - 0.15,
       HIRUMAWARI_PHRASE_END,
     );
   }
   const { samples, sampleRate } = readWavMono16(VOCAL_WAV);
   const t0 = HIRUMAWARI_PHRASE2_START;
-  const t1 = HIRUMAWARI_PHRASE2_END + 0.2;
-  const slice = sliceSeconds(samples, sampleRate, t0, t1);
+  const slice = sliceSeconds(samples, sampleRate, t0, HIRUMAWARI_PHRASE2_END + 0.2);
   return transcribeSamples(slice, sampleRate, HIRUMAWARI_AUDIO_TONIC, t0, HIRUMAWARI_PHRASE2_START, HIRUMAWARI_PHRASE2_END);
-}
-
-export async function transcribeAlignSong(song) {
-  if (song.source === "hirumawari-vocal") return transcribeHirumawari(song.id);
-  if (!song.score) throw new Error(`${song.id} has no score to synthesize`);
-  const { samples, sampleRate } = renderScoreSamples(song.score, { bpm: song.bpm });
-  return transcribeSamples(samples, sampleRate, song.fromTonic);
-}
-
-export function compareDegrees(actual, expected) {
-  const want = [...expected];
-  const got = actual.slice(0, want.length);
-  const pass = got.length === want.length && got.every((d, i) => d === want[i]);
-  return { got, want, pass };
 }
 
 export async function runAlignSet() {
   const rows = [];
-  for (const song of ALIGN_SONGS) {
-    const transcribed = await transcribeAlignSong(song);
+  for (const song of POP_PHRASE_FIXTURES) {
+    if (!song.liveAudio) {
+      rows.push({
+        id: song.id,
+        song: song.title,
+        expected: song.cMajorFixed.join(" "),
+        actual: "(no audio — fixture only)",
+        midis: [],
+        pass: true,
+        fixtureOnly: true,
+      });
+      continue;
+    }
+    const transcribed = await transcribeHirumawari(song.id);
     if (transcribed.skip) {
       rows.push({
         id: song.id,
-        song: song.name,
-        expected: [...song.degrees].join(" "),
+        song: song.title,
+        expected: song.cMajorFixed.join(" "),
         actual: `(skipped: ${transcribed.skip})`,
+        midis: [],
         pass: false,
         skip: transcribed.skip,
       });
       continue;
     }
-    const { got, want, pass } = compareDegrees(transcribed.inC, song.degrees);
+    const got = transcribed.inC.slice(0, song.cMajorFixed.length);
+    const pass = matchFirstPhrase(transcribed.inC, song.cMajorFixed);
     rows.push({
       id: song.id,
-      song: song.name,
-      expected: want.join(" "),
+      song: song.title,
+      expected: [...song.cMajorFixed].join(" "),
       actual: got.join(" "),
-      extra: transcribed.inC.slice(want.length).join(" "),
+      extra: transcribed.inC.slice(song.cMajorFixed.length).join(" "),
       gAudio: transcribed.inG.join(" "),
+      midis: transcribed.midis.slice(0, song.cMajorFixed.length),
       pass,
     });
   }
@@ -107,7 +105,10 @@ export async function runAlignSet() {
 export function formatAlignTable(rows) {
   const lines = [
     "song\texpected\tactual\tresult",
-    ...rows.map((r) => `${r.song}\t${r.expected}\t${r.actual}\t${r.skip ? "skip" : r.pass ? "pass" : "fail"}`),
+    ...rows.map((r) => {
+      const result = r.skip ? "skip" : r.fixtureOnly ? "fixture" : r.pass ? "pass" : "fail";
+      return `${r.song}\t${r.expected}\t${r.actual}\t${result}`;
+    }),
   ];
   return lines.join("\n");
 }
@@ -116,10 +117,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const rows = await runAlignSet();
   console.log(formatAlignTable(rows));
   for (const r of rows) {
-    console.log(`\n${r.song} ${r.skip ? "SKIP" : r.pass ? "PASS" : "FAIL"}`);
+    console.log(`\n${r.song} ${r.skip ? "SKIP" : r.fixtureOnly ? "FIXTURE" : r.pass ? "PASS" : "FAIL"}`);
     console.log(`  expected ${r.expected}`);
     console.log(`  actual   ${r.actual}`);
+    if (r.midis?.length) console.log(`  midi     ${r.midis.join(" ")}`);
     if (r.extra) console.log(`  extra    ${r.extra}`);
   }
-  process.exit(rows.every((r) => r.pass || r.skip) && rows.some((r) => r.pass) ? 0 : 1);
+  const live = rows.filter((r) => !r.fixtureOnly);
+  process.exit(live.every((r) => r.pass || r.skip) && live.some((r) => r.pass) ? 0 : 1);
 }

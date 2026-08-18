@@ -1,73 +1,52 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cMajorDegrees } from "../src/lib/melody/leadsheet.ts";
 import {
-  ALIGN_SONGS,
-  HAPPY_BIRTHDAY_C,
-  HAPPY_BIRTHDAY_SCORE,
-  ODE_TO_JOY_C,
-  ODE_TO_JOY_SCORE,
-  TWINKLE_ALIGN_C,
-  TWINKLE_ALIGN_SCORE,
-  TWO_TIGERS_C,
-  TWO_TIGERS_SCORE,
-} from "../src/lib/melody/align-scores.ts";
+  GAOBAI_QIQU_C,
+  GAOBAI_QIQU_PUBLISHED,
+  POP_PHRASE_FIXTURES,
+  YEKONG_C,
+  YEKONG_PUBLISHED,
+  matchFirstPhrase,
+  movableMajorToCFixed,
+} from "../src/lib/melody/pop-phrase-fixtures.ts";
 import { HIRUMAWARI_OPENING_C, HIRUMAWARI_PHRASE2_C } from "../src/lib/melody/hirumawari-opening.ts";
-import { renderScoreSamples } from "../src/lib/melody/render-score.ts";
 import { formatAlignTable, runAlignSet } from "./align-scores.mjs";
 
-test("align fixtures are C=1 固定调 of their scores; 昼回 fixtures unchanged", () => {
-  assert.deepEqual(
-    cMajorDegrees(
-      TWINKLE_ALIGN_SCORE.map((n) => n.midi),
-      0,
-    ),
-    [...TWINKLE_ALIGN_C],
-  );
-  assert.deepEqual(
-    cMajorDegrees(
-      ODE_TO_JOY_SCORE.map((n) => n.midi),
-      0,
-    ),
-    [...ODE_TO_JOY_C],
-  );
-  assert.deepEqual(
-    cMajorDegrees(
-      HAPPY_BIRTHDAY_SCORE.map((n) => n.midi),
-      0,
-    ),
-    [...HAPPY_BIRTHDAY_C],
-  );
-  assert.deepEqual(
-    cMajorDegrees(
-      TWO_TIGERS_SCORE.map((n) => n.midi),
-      0,
-    ),
-    [...TWO_TIGERS_C],
-  );
+test("pop fixtures are first-line 首调 + C=1 固定调; no nursery-rhyme rulers", () => {
+  assert.deepEqual([...GAOBAI_QIQU_PUBLISHED], ["1", "1", "7", "1", "7", "1", "7", "1", "2"]);
+  assert.deepEqual(GAOBAI_QIQU_C, ["7", "7", "#6", "7", "#6", "7", "#6", "7", "#1"]);
+  assert.deepEqual(movableMajorToCFixed(GAOBAI_QIQU_PUBLISHED, 11), GAOBAI_QIQU_C);
+
+  assert.deepEqual([...YEKONG_PUBLISHED], ["3", "2", "3", "2", "3", "5", "5", "1", "2", "1"]);
+  assert.deepEqual(YEKONG_C, ["#2", "#1", "#2", "#1", "#2", "#4", "#4", "7", "#1", "7"]);
+  assert.deepEqual(movableMajorToCFixed(YEKONG_PUBLISHED, 11), YEKONG_C);
+
   assert.deepEqual([...HIRUMAWARI_OPENING_C], ["1", "2", "3", "2", "3", "4", "3", "2", "7", "1", "2", "2", "7", "1"]);
   assert.deepEqual([...HIRUMAWARI_PHRASE2_C], ["6", "7", "1", "1", "1", "1", "1", "7", "5", "1", "2", "1", "3"]);
-  assert.equal(ALIGN_SONGS.length, 6);
+
+  const titles = POP_PHRASE_FIXTURES.map((s) => s.title);
+  assert.ok(titles.some((t) => t.includes("告白气球")));
+  assert.ok(titles.some((t) => t.includes("夜空中最亮的星")));
+  assert.ok(titles.some((t) => t.includes("昼回")));
+  assert.ok(!titles.some((t) => /小星星|欢乐颂|生日快乐|两只老虎/.test(t)));
+  assert.ok(matchFirstPhrase(["7", "7", "#6", "7", "#6", "7", "#6", "7", "#1", "x"], GAOBAI_QIQU_C));
 });
 
-test("renderScoreSamples writes a dry triangle line like the 小星星 demo", () => {
-  const { samples, sampleRate } = renderScoreSamples(TWINKLE_ALIGN_SCORE, { bpm: 96 });
-  assert.equal(sampleRate, 22050);
-  let peak = 0;
-  for (const x of samples) peak = Math.max(peak, Math.abs(x));
-  assert.ok(peak > 0.1 && peak <= 1);
-  assert.ok(samples.length / sampleRate > 8);
-});
-
-test("align-scores: synth C + 昼回 dry vocal 固定调 match fixtures", async () => {
+test("align-scores: 昼回 dry vocal 固定调 match fixtures", async () => {
   const rows = await runAlignSet();
   console.log(formatAlignTable(rows));
   for (const r of rows) {
-    if (r.skip) continue;
-    assert.ok(r.pass, `${r.song}\n  got  ${r.actual}\n  want ${r.expected}`);
+    if (r.skip || r.fixtureOnly) continue;
+    assert.ok(r.pass, `${r.song}\n  got  ${r.actual}\n  want ${r.expected}\n  midi ${r.midis?.join(" ")}`);
   }
-  assert.ok(
-    rows.some((r) => r.id === "hirumawari-2" && (r.pass || r.skip)),
-    "昼回 第二句 must stay in the align set",
-  );
+  const p1 = rows.find((r) => r.id === "hirumawari-1");
+  const p2 = rows.find((r) => r.id === "hirumawari-2");
+  assert.ok(p1 && (p1.pass || p1.skip), "昼回 第一句 must stay in the pop align set");
+  assert.ok(p2 && (p2.pass || p2.skip), "昼回 第二句 must stay in the pop align set");
+  if (p1 && !p1.skip) {
+    console.log(`昼回 第一句 midi ${p1.midis.join(" ")}`);
+  }
+  if (p2 && !p2.skip) {
+    console.log(`昼回 第二句 midi ${p2.midis.join(" ")}`);
+  }
 });

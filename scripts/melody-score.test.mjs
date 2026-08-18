@@ -159,14 +159,14 @@ test("MIDI keeps every analysis note at 1-tick resolution, not a 16th grid", () 
     ticks.map((t) => t.midi),
     raw.map((n) => n.midi),
   );
-  const onSixteenth = ticks.filter((n) => n.tick % 120 === 0).length;
+  const onSixteenth = ticks.filter((n) => n.tick % 240 === 0).length;
   assert.ok(onSixteenth <= 1, `onsets should not sit on 16ths, got ${onSixteenth}/${ticks.length}`);
   for (const n of ticks) assert.ok(n.durationTicks >= 1);
 
   const bytes = notesToMidi(notes, { bpm, title: "昼回のメモリー", key: { tonic: 7, mode: "major" } });
   assert.equal(bytes[8], 0);
   assert.equal(bytes[9], 1);
-  assert.equal((bytes[12] << 8) | bytes[13], 480);
+  assert.equal((bytes[12] << 8) | bytes[13], 960);
   const text = Buffer.from(bytes).toString("latin1");
   assert.match(text, /Melody/);
   assert.doesNotMatch(text, /昼回/);
