@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   buildLeadSheet,
@@ -30,6 +30,20 @@ export function LeadSheet({
   title: string;
 }) {
   const lines = useMemo(() => buildLeadSheet(result, lyrics), [result, lyrics]);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const cursorStart = useMemo(() => {
+    for (const line of lines) {
+      for (const c of line.cells) {
+        if (currentTime >= c.start && currentTime < c.start + c.duration) return c.start;
+      }
+    }
+    return -1;
+  }, [lines, currentTime]);
+  useEffect(() => {
+    if (cursorStart < 0) return;
+    const el = sheetRef.current?.querySelector("[data-lead-cell='now']");
+    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [cursorStart]);
   const flats = prefersFlats(result.key.tonic, result.key.mode);
   const keyMark = keyJianpuLabel(result.key.tonic, flats);
   const plain = useMemo(
@@ -59,7 +73,7 @@ export function LeadSheet({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-paper px-5 py-5 text-ink">
+      <div ref={sheetRef} className="rounded-xl border border-border bg-paper px-5 py-5 text-ink">
         <div className="border-b border-ink/15 pb-3 text-center">
           <h2 className="font-display text-xl font-semibold tracking-wide">{title || "词谱"}</h2>
           <p className="mt-1 font-mono text-xs text-ink/60">
@@ -71,7 +85,7 @@ export function LeadSheet({
             <LeadRow
               key={`${line.start}-${i}`}
               line={line}
-              active={currentTime >= line.start && currentTime < line.start + line.duration}
+              currentTime={currentTime}
               onSeek={onSeek}
             />
           ))}
@@ -97,21 +111,20 @@ export function LeadSheet({
 
 function LeadRow({
   line,
-  active,
+  currentTime,
   onSeek,
 }: {
   line: LeadLine;
-  active: boolean;
+  currentTime: number;
   onSeek: (t: number) => void;
 }) {
   const cols = Math.max(1, line.cells.length);
+  const lineActive = currentTime >= line.start && currentTime < line.start + line.duration;
   return (
-    <button
-      type="button"
-      onClick={() => onSeek(line.start)}
+    <div
       className={cn(
         "w-full overflow-x-auto rounded-md px-1 py-1 text-left",
-        active ? "bg-ink/5" : "hover:bg-ink/[0.03]",
+        lineActive ? "bg-ink/5" : "hover:bg-ink/[0.03]",
       )}
     >
       <div
@@ -123,49 +136,66 @@ function LeadRow({
           columnGap: "0.1rem",
         }}
       >
-        {line.cells.map((c, i) => (
-          <div
-            key={`n${i}`}
-            className={cn(
-              "text-center font-mono text-[16px] font-medium tabular-nums text-ink",
-              c.bar && i > 0 && "border-l border-ink/50",
-            )}
-          >
-            <span
+        {line.cells.map((c, i) => {
+          const on = currentTime >= c.start && currentTime < c.start + c.duration;
+          return (
+            <button
+              key={`n${i}`}
+              type="button"
+              data-lead-cell={on ? "now" : undefined}
+              onClick={() => onSeek(c.start)}
               className={cn(
-                "inline-block min-w-[1.1em]",
-                c.under === 1 && "border-b border-ink",
-                c.under === 2 && "border-b-2 border-ink",
+                "rounded-sm text-center font-mono text-[16px] font-medium tabular-nums text-ink",
+                c.bar && i > 0 && "border-l border-ink/50",
+                on && "bg-ink/10",
+                c.rest && "text-ink/45",
               )}
             >
-              {c.jianpu || c.name}
-              {c.dash ? <span className="ml-0.5 text-ink/70">{c.dash}</span> : null}
-            </span>
-          </div>
-        ))}
+              <span
+                className={cn(
+                  "inline-block min-w-[1.1em]",
+                  c.under === 1 && "border-b border-ink",
+                  c.under === 2 && "border-b-2 border-ink",
+                )}
+              >
+                {c.jianpu || c.name}
+                {c.dotted ? "." : ""}
+                {c.dash ? <span className="ml-0.5 text-ink/70">{c.dash}</span> : null}
+              </span>
+            </button>
+          );
+        })}
+        {line.cells.map((c, i) => {
+          const on = currentTime >= c.start && currentTime < c.start + c.duration;
+          return (
+            <button
+              key={`w${i}`}
+              type="button"
+              onClick={() => onSeek(c.start)}
+              className={cn(
+                "pt-0.5 text-center font-display text-[17px] font-medium leading-8 text-ink",
+                c.bar && i > 0 && "border-l border-ink/20",
+                on && "bg-ink/10",
+              )}
+            >
+              {c.lyric || ""}
+            </button>
+          );
+        })}
         {line.cells.map((c, i) => (
-          <div
-            key={`w${i}`}
-            className={cn(
-              "pt-0.5 text-center font-display text-[17px] font-medium leading-8 text-ink",
-              c.bar && i > 0 && "border-l border-ink/20",
-            )}
-          >
-            {c.lyric || (line.text && i === 0 ? line.text : "")}
-          </div>
-        ))}
-        {line.cells.map((c, i) => (
-          <div
+          <button
             key={`c${i}`}
+            type="button"
+            onClick={() => onSeek(c.start)}
             className={cn(
               "text-center font-mono text-[11px] font-semibold text-ink/65",
               c.bar && i > 0 && "border-l border-ink/20",
             )}
           >
             {c.chord}
-          </div>
+          </button>
         ))}
       </div>
-    </button>
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Pause, Play, Repeat } from "lucide-react";
+import { Pause, Play, Repeat, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import type { PlayMode } from "@/lib/melody/synth";
@@ -13,6 +13,7 @@ export function PlayerBar({
   canPlaySource,
   canPlayVocals,
   onToggle,
+  onStop,
   onSeek,
   onMode,
   onLoop,
@@ -25,6 +26,7 @@ export function PlayerBar({
   canPlaySource: boolean;
   canPlayVocals?: boolean;
   onToggle: () => void;
+  onStop?: () => void;
   onSeek: (t: number) => void;
   onMode: (m: PlayMode) => void;
   onLoop: (next: boolean) => void;
@@ -52,6 +54,11 @@ export function PlayerBar({
             <Play className="size-4 fill-current" />
           )}
         </Button>
+        {onStop ? (
+          <Button size="icon" variant="ghost" aria-label="停止" onClick={onStop} className="shrink-0">
+            <Square className="size-3.5 fill-current" />
+          </Button>
+        ) : null}
         <Button
           size="icon"
           variant={loop ? "secondary" : "ghost"}

@@ -1,3 +1,4 @@
+import { chordAtTime, notateAnalysis } from "./notation";
 import { midiName, prefersFlats, type AnalysisResult, type ChordEvent, type NoteEvent } from "./notes";
 
 export type LyricLine = {
@@ -17,6 +18,8 @@ export type LeadCell = {
   bar: boolean;
   under: 0 | 1 | 2;
   dash: string;
+  rest?: boolean;
+  dotted?: boolean;
 };
 
 export type LeadLine = {
@@ -27,12 +30,19 @@ export type LeadLine = {
 };
 
 /** Numbered notation relative to the song key. G4 in G major → 1 */
-export function midiToJianpu(midi: number, tonic: number, centerMidi = 67): string {
+export function midiToJianpu(
+  midi: number,
+  tonic: number,
+  centerMidi = 67,
+  flats = false,
+): string {
   const rounded = Math.round(midi);
   const pc = ((rounded % 12) + 12) % 12;
   const tpc = ((tonic % 12) + 12) % 12;
   const rel = (pc - tpc + 12) % 12;
-  const table = ["1", "#1", "2", "#2", "3", "4", "#4", "5", "#5", "6", "#6", "7"];
+  const table = flats
+    ? ["1", "b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7"]
+    : ["1", "#1", "2", "#2", "3", "4", "#4", "5", "#5", "6", "#6", "7"];
   const num = table[rel] ?? "1";
   let tonicMidi = 48 + tpc;
   while (tonicMidi < centerMidi - 6) tonicMidi += 12;
@@ -75,37 +85,8 @@ export function tokenizeLyric(text: string): string[] {
   return Array.from(trimmed.replace(/\s+/g, "")).filter((ch) => ch !== "　");
 }
 
-function thinNotes(notes: NoteEvent[], count: number): NoteEvent[] {
-  if (notes.length <= count) return notes;
-  if (count <= 0) return notes;
-  const start = notes[0].start;
-  const end = notes[notes.length - 1].start;
-  const used = new Set<number>();
-  const out: NoteEvent[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = count === 1 ? start : start + ((end - start) * i) / (count - 1);
-    let best = 0;
-    let bestD = 1e9;
-    for (let j = 0; j < notes.length; j++) {
-      if (used.has(j)) continue;
-      const d = Math.abs(notes[j].start - t);
-      if (d < bestD) {
-        bestD = d;
-        best = j;
-      }
-    }
-    used.add(best);
-    out.push(notes[best]);
-  }
-  return out.sort((a, b) => a.start - b.start);
-}
-
-function chordAt(chords: ChordEvent[], t: number): string {
-  for (let i = chords.length - 1; i >= 0; i--) {
-    const c = chords[i];
-    if (t + 0.03 >= c.start && t < c.start + c.duration + 0.05) return c.symbol;
-  }
-  return "";
+function chordLabel(chords: ChordEvent[], t: number): string {
+  return chordAtTime(chords, t)?.symbol ?? "";
 }
 
 export function assignLyrics(
@@ -137,79 +118,108 @@ export function assignLyrics(
 export function buildLeadSheet(result: AnalysisResult, lyrics: LyricLine[]): LeadLine[] {
   const flats = prefersFlats(result.key.tonic, result.key.mode);
   const tonic = result.key.tonic;
-  const notes = result.notes.filter((n) => n.duration >= 0.08);
-  const midis = notes.map((n) => n.midi).sort((a, b) => a - b);
+  const midis = result.notes.map((n) => n.midi).sort((a, b) => a - b);
   const center = midis.length ? midis[Math.floor(midis.length / 2)] : 67;
-  const spans = lyrics.length
-    ? lyrics
-    : melodyPhrases(notes).map((p) => ({ start: p.start, end: p.end, text: "" }));
+  const measures = notateAnalysis(result);
+  if (!measures.length) return [];
 
-  return spans.map((line) => {
-    const inLine = notes.filter(
-      (n) => n.start + n.duration > line.start + 0.04 && n.start < line.end - 0.02,
-    );
-    const tokens = tokenizeLyric(line.text);
-    const picked = tokens.length ? thinNotes(inLine, tokens.length) : inLine;
-    const beat = 60 / Math.max(40, result.bpm || 100);
-    const origin = notes[0]?.start ?? 0;
-    const cells: LeadCell[] = picked.map((n, i) => {
-      const beats = n.duration / beat;
-      const under: 0 | 1 | 2 = beats < 0.4 ? 2 : beats < 0.75 ? 1 : 0;
-      const dash = beats >= 3.5 ? "—" : beats >= 1.6 ? "-" : "";
-      const step = Math.round((n.start - origin) / beat);
-      return {
-        name: midiName(n.midi, flats).replace("♯", "#").replace("♭", "b"),
-        jianpu: midiToJianpu(n.midi, tonic, center),
-        midi: n.midi,
-        start: n.start,
-        duration: n.duration,
-        lyric: tokens.length ? (tokens[i] ?? "") : "",
+  const queues = lyrics.map((line) => ({
+    start: line.start,
+    end: line.end,
+    tokens: tokenizeLyric(line.text),
+    i: 0,
+  }));
+
+  function lyricFor(start: number, duration: number, isNote: boolean): string {
+    if (!isNote || !queues.length) return "";
+    const line = queues.find((q) => start + duration * 0.25 >= q.start && start < q.end);
+    if (!line) return "";
+    const tok = line.tokens[line.i];
+    if (tok === undefined) return "";
+    line.i += 1;
+    return tok;
+  }
+
+  const cellsByMeasure: LeadCell[][] = measures.map((measure) => {
+    const cells: LeadCell[] = [];
+    for (const ev of measure.events) {
+      if (ev.tieFromPrev) continue;
+      const isRest = ev.kind === "rest";
+      const under: 0 | 1 | 2 = ev.units <= 1 ? 2 : ev.units <= 2 ? 1 : 0;
+      const hold = ev.units >= 16 ? "— — —" : ev.units >= 12 ? "— —" : ev.units >= 8 ? "—" : ev.units >= 6 ? "-" : "";
+      cells.push({
+        name: isRest ? "" : midiName(ev.midi, flats).replace("♯", "#").replace("♭", "b"),
+        jianpu: isRest ? "0" : midiToJianpu(ev.midi, tonic, center, flats),
+        midi: ev.midi,
+        start: ev.start,
+        duration: ev.duration,
+        lyric: lyricFor(ev.start, ev.duration, !isRest),
         chord: "",
-        bar: ((step % 4) + 4) % 4 === 0,
+        bar: cells.length === 0,
         under,
-        dash,
-      };
-    });
-    if (tokens.length > cells.length && cells.length) {
-      cells[cells.length - 1].lyric = tokens.slice(cells.length - 1).join("");
+        dash: hold,
+        rest: isRest,
+        dotted: ev.dotted,
+      });
     }
-    let lastChord = "";
-    for (const cell of cells) {
-      const ch = chordAt(result.chords, cell.start + cell.duration * 0.15);
+    return cells;
+  });
+
+  for (const q of queues) {
+    if (q.i >= q.tokens.length || !q.tokens.length) continue;
+    const leftover = q.tokens.slice(q.i).join("");
+    let last: LeadCell | undefined;
+    for (const row of cellsByMeasure) {
+      for (const cell of row) {
+        if (cell.start + cell.duration > q.start && cell.start < q.end && !cell.rest) last = cell;
+      }
+    }
+    if (last) last.lyric = `${last.lyric}${leftover}`;
+  }
+
+  let lastChord = "";
+  for (const row of cellsByMeasure) {
+    for (const cell of row) {
+      const ch = chordLabel(result.chords, cell.start + cell.duration * 0.1);
       cell.chord = ch && ch !== lastChord ? ch : "";
       if (ch) lastChord = ch;
     }
-    if (!cells.length && line.text) {
-      cells.push({
-        name: "",
-        jianpu: "",
-        midi: 0,
-        start: line.start,
-        duration: Math.max(0.4, line.end - line.start),
-        lyric: line.text,
-        chord: chordAt(result.chords, line.start),
-        bar: true,
-        under: 0,
-        dash: "",
-      });
-    }
-    return {
-      start: line.start,
-      duration: Math.max(0.4, line.end - line.start),
-      text: line.text,
+  }
+
+  const lines: LeadLine[] = [];
+  for (let i = 0; i < measures.length; i += 4) {
+    const chunk = measures.slice(i, i + 4);
+    const cells = cellsByMeasure.slice(i, i + 4).flat();
+    const start = chunk[0]?.start ?? 0;
+    const bar = (60 / Math.max(40, result.bpm)) * 4;
+    const text = cells
+      .map((c) => c.lyric)
+      .join("")
+      .trim();
+    lines.push({
+      start,
+      duration: Math.max(0.4, chunk.length * bar),
+      text,
       cells,
-    };
-  });
+    });
+  }
+  return lines;
 }
 
 export function leadSheetPlainText(lines: LeadLine[], title: string, key: string, bpm: number): string {
   const blocks = lines.map((line) => {
-    const names = line.cells.map((c) => (c.jianpu || c.name).padEnd(4, " ")).join(" ");
-    const words = line.cells.map((c) => (c.lyric || "·").padEnd(4, " ")).join(" ");
-    const chords = line.cells.map((c) => (c.chord || "").padEnd(4, " ")).join(" ");
+    const names = line.cells
+      .map((c) => `${c.bar ? "| " : ""}${(c.jianpu || c.name).padEnd(4, " ")}`)
+      .join(" ");
+    const words = line.cells
+      .map((c) => `${c.bar ? "| " : ""}${(c.lyric || "·").padEnd(4, " ")}`)
+      .join(" ");
+    const chords = line.cells
+      .map((c) => `${c.bar ? "| " : ""}${(c.chord || "").padEnd(4, " ")}`)
+      .join(" ");
     return `${names}\n${words}\n${chords}`.replace(/[ \t]+$/gm, "");
   });
-  return `${title}\n${key} · ${Math.round(bpm)} BPM\n\n${blocks.join("\n\n")}\n`;
+  return `${title}\n${key} · ${Math.round(bpm)} BPM · 4/4\n\n${blocks.join("\n\n")}\n`;
 }
 
 export const HIRUMAWARI_LYRICS: LyricLine[] = [

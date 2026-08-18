@@ -15,14 +15,15 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { assignLyrics, lyricsForFile, type LyricLine } from "@/lib/melody/leadsheet";
-import { formatProgression, transposeChords } from "@/lib/melody/chords";
+import { formatProgression, snapChordsToGrid, transposeChords } from "@/lib/melody/chords";
 import { analyzeMelody, buildResult, type AnalyzeOptions } from "@/lib/melody/analyze";
 import { DEMO_FILE_NAME, renderDemoBuffer } from "@/lib/melody/demo";
 import { midiBlob, notesToJson } from "@/lib/melody/midi";
 import {
   clampBpm,
   detectKey,
-  quantizeNotes,
+  findGridOffset,
+  quantizeToGrid,
   transposeNotes,
   type AnalysisResult,
   type NoteEvent,
@@ -55,6 +56,7 @@ export function Studio({
           sampleRate: 16000,
           waveform: new Float32Array(0),
           pitchTrack: [],
+          gridOffset: findGridOffset(initial.notes, initial.bpm),
         }
       : null,
   );
@@ -144,7 +146,16 @@ export function Studio({
       return;
     }
     if (nextOpts.quantize) {
-      applyNotes(quantizeNotes(current.notes, nextOpts.bpm ?? current.bpm));
+      const q = quantizeToGrid(current.notes, nextOpts.bpm ?? current.bpm);
+      const next = {
+        ...current,
+        notes: q.notes,
+        gridOffset: q.gridOffset,
+        chords: snapChordsToGrid(current.chords, nextOpts.bpm ?? current.bpm, q.gridOffset),
+        key: detectKey(q.notes),
+      };
+      resultRef.current = next;
+      setResult(next);
     }
   }
 
@@ -153,8 +164,9 @@ export function Studio({
     if (!current) return;
     const bpm = clampBpm(next);
     if (bpm === current.bpm) return;
-    const notes = quantize ? quantizeNotes(current.notes, bpm) : current.notes;
-    const updated = { ...current, bpm, notes };
+    const q = quantize ? quantizeToGrid(current.notes, bpm) : { notes: current.notes, gridOffset: findGridOffset(current.notes, bpm) };
+    const chords = snapChordsToGrid(current.chords, bpm, q.gridOffset);
+    const updated = { ...current, bpm, notes: q.notes, gridOffset: q.gridOffset, chords };
     resultRef.current = updated;
     setResult(updated);
   }
@@ -556,6 +568,11 @@ export function Studio({
             canPlaySource={Boolean(bufferRef.current)}
             canPlayVocals={Boolean(vocalRef.current)}
             onToggle={() => void togglePlay()}
+            onStop={() => {
+              player.halt();
+              setPlaying(false);
+              setCurrentTime(0);
+            }}
             onSeek={seek}
             onLoop={setLoop}
             onMode={(m) => {
@@ -566,6 +583,15 @@ export function Studio({
               }
             }}
           />
+          <p className="text-xs text-subtle">
+            {mode === "melody"
+              ? "旋律模式按谱上的音符和和弦合成，光标跟着五线谱 / 词谱 / 卷帘走。"
+              : mode === "both"
+                ? "对照：谱的合成音叠在干声或原曲上。"
+                : mode === "vocals"
+                  ? "正在听拆出的干声。"
+                  : "正在听原曲。"}
+          </p>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
             <Tabs defaultValue="roll" className="min-w-0">
@@ -597,16 +623,20 @@ export function Studio({
                   selectedId={selectedId}
                   currentTime={currentTime}
                   onSelect={setSelectedId}
+                  onSeek={seek}
                 />
               </TabsContent>
               <TabsContent value="chords" className="mt-3">
                 {result.chords.length ? (
                   <div className="rounded-xl border border-border bg-surface p-4">
                     <p className="text-xs text-subtle">
-                      {result.key.name} · 按两拍切一块 · 已写入 MIDI 第二轨
+                      {result.key.name} · 按两拍切一块并对齐小节 · 已写入 MIDI 第二轨
                     </p>
                     <pre className="mt-3 overflow-x-auto font-mono text-sm leading-7 text-fg">
-                      {formatProgression(result.chords)}
+                      {formatProgression(result.chords, 4, {
+                        bpm: result.bpm,
+                        gridOffset: result.gridOffset ?? 0,
+                      })}
                     </pre>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {result.chords.map((c, i) => (
@@ -773,7 +803,7 @@ export function Studio({
                   onChange={applyNotes}
                 />
               </div>
-              <p className="text-xs text-subtle">空格播放 · [ ] 移调 · ↑↓ 改选中音</p>
+              <p className="text-xs text-subtle">空格播放 · 点谱定位 · [ ] 移调 · ↑↓ 改选中音</p>
             </aside>
           </div>
         </>

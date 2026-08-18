@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   beatSeconds,
-  firstNoteTime,
+  resolveGridOffset,
   midiName,
   prefersFlats,
   type AnalysisResult,
@@ -68,7 +68,7 @@ export function PianoRoll({
   const { low: LOW, high: HIGH } = noteRange(result.notes);
   const duration = Math.max(result.duration, 0.01);
   const beat = beatSeconds(result.bpm);
-  const origin = firstNoteTime(result.notes);
+  const origin = resolveGridOffset(result);
   const pxPerSec = Math.max(56, Math.min(180, 820 / Math.max(4, duration))) * zoom;
   const flats = prefersFlats(result.key.tonic, result.key.mode);
   const hasChords = Boolean(result.chords?.length);

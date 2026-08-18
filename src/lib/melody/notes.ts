@@ -44,6 +44,8 @@ export type AnalysisResult = {
   sampleRate: number;
   waveform: Float32Array;
   pitchTrack: PitchFrame[];
+  /** Time of a 4/4 downbeat. Barlines sit at gridOffset + n * (4 beats). */
+  gridOffset?: number;
 };
 
 export const NOTE_NAMES_SHARP = [
@@ -281,50 +283,169 @@ function nearestMelodyOctave(midi: number, ref: number): number {
   return best;
 }
 
-/**
- * Snap starts and lengths to a beat grid. Searches a small phase offset so
- * pickup notes (like a lead-in) still land on the grid.
- */
-export function quantizeNotes(notes: NoteEvent[], bpm: number, division = 4): NoteEvent[] {
-  if (!notes.length || !Number.isFinite(bpm) || bpm < 40) return notes;
-  const grid = 60 / Math.max(40, bpm) / division;
+export function secondsPerSixteenth(bpm: number): number {
+  return beatSeconds(bpm) / 4;
+}
+
+export function timeToTick(t: number, bpm: number, gridOffset: number): number {
+  return Math.round((t - gridOffset) / secondsPerSixteenth(bpm));
+}
+
+export function tickToTime(tick: number, bpm: number, gridOffset: number): number {
+  return gridOffset + tick * secondsPerSixteenth(bpm);
+}
+
+export function resolveGridOffset(
+  result: Pick<AnalysisResult, "notes" | "bpm" | "gridOffset">,
+): number {
+  if (Number.isFinite(result.gridOffset)) return result.gridOffset as number;
+  return findGridOffset(result.notes, result.bpm);
+}
+
+/** Sub-16th phase in [0, sixteenth) that best matches note attacks. */
+export function findGridPhase(notes: NoteEvent[], bpm: number): number {
+  if (!notes.length || !Number.isFinite(bpm) || bpm < 40) return 0;
+  const sixteenth = secondsPerSixteenth(bpm);
+  const steps = 8;
   let bestOff = 0;
   let bestErr = Infinity;
-  const steps = division * 2;
   for (let i = 0; i < steps; i++) {
-    const off = (i * grid) / 2;
+    const off = (i * sixteenth) / steps;
     let err = 0;
+    let wsum = 0;
     for (const n of notes) {
-      const snapped = Math.round((n.start - off) / grid) * grid + off;
-      err += Math.abs(snapped - n.start);
+      const w = (0.4 + n.confidence) * Math.min(2.5, Math.sqrt(Math.max(0.08, n.duration)));
+      const snapped = Math.round((n.start - off) / sixteenth) * sixteenth + off;
+      err += Math.abs(snapped - n.start) * w;
+      wsum += w;
     }
-    if (err < bestErr) {
-      bestErr = err;
+    const mean = wsum ? err / wsum : err;
+    if (mean < bestErr) {
+      bestErr = mean;
       bestOff = off;
     }
   }
+  return bestOff;
+}
+
+/**
+ * Time of a 4/4 downbeat. Phase is chosen from attacks; the 16th that is
+ * beat 1 is the rotation that puts the most weight on beats.
+ */
+export function findGridOffset(notes: NoteEvent[], bpm: number): number {
+  if (!notes.length || !Number.isFinite(bpm) || bpm < 40) return 0;
+  const sixteenth = secondsPerSixteenth(bpm);
+  const phase = findGridPhase(notes, bpm);
+  let bestK = 0;
+  let bestScore = -Infinity;
+  for (let k = 0; k < 16; k++) {
+    let score = 0;
+    for (let i = 0; i < notes.length; i++) {
+      const n = notes[i];
+      const step = Math.round((n.start - phase) / sixteenth);
+      const pos = (((step - k) % 16) + 16) % 16;
+      const units = Math.max(1, Math.round(n.duration / sixteenth));
+      const w = 0.5 + 0.5 * n.confidence;
+      if (pos === 0) score += 1.15 * w;
+      else if (pos % 4 === 0) score += 1 * w;
+      else if (pos % 2 === 0) score += 0.15 * w;
+      else score -= 0.12 * w;
+      if (i === 0 && pos % 4 === 0) score += 0.55 * w;
+      if (i === 0 && pos === 0) score += 0.4 * w;
+      if (units >= 6 && (pos + units) % 16 === 0) score += 0.75 * w;
+    }
+    if (score > bestScore + 1e-6) {
+      bestScore = score;
+      bestK = k;
+    }
+  }
+  return phase + bestK * sixteenth;
+}
+
+const BEAT_UNITS = [1, 2, 4, 8, 16, 24, 32];
+const DOTTED_UNITS = [3, 6, 12];
+const PREFERRED_UNITS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
+
+function snapDurationUnits(raw: number, maxUnits: number, startTick: number): number {
+  const cap = Math.max(1, Math.floor(maxUnits));
+  const r = Math.max(0.51, Math.min(cap, raw));
+  const onBeat = ((startTick % 4) + 4) % 4 === 0;
+  const pool = onBeat ? [...BEAT_UNITS, ...DOTTED_UNITS] : PREFERRED_UNITS;
+  let best = Math.max(1, Math.min(cap, Math.round(r)));
+  let bestScore = Infinity;
+  for (const p of pool) {
+    if (p > cap) continue;
+    const d = Math.abs(p - r);
+    const dotted = p === 3 || p === 6 || p === 12;
+    const score = d + (dotted ? 0.28 : 0) + (onBeat && p % 4 !== 0 && p > 2 ? 0.12 : 0);
+    if (score < bestScore) {
+      bestScore = score;
+      best = p;
+    }
+  }
+  return best;
+}
+
+export type QuantizeResult = {
+  notes: NoteEvent[];
+  gridOffset: number;
+};
+
+/**
+ * Snap attacks and lengths to a 16th grid aligned to the detected downbeat.
+ * Durations prefer readable values (16th / 8th / quarter / dotted / half).
+ */
+export function quantizeToGrid(notes: NoteEvent[], bpm: number): QuantizeResult {
+  if (!notes.length || !Number.isFinite(bpm) || bpm < 40) {
+    return { notes, gridOffset: 0 };
+  }
+  const sixteenth = secondsPerSixteenth(bpm);
+  const gridOffset = findGridOffset(notes, bpm);
 
   const snapped = notes
     .map((n) => {
-      const start = Math.max(0, Math.round((n.start - bestOff) / grid) * grid + bestOff);
-      const rawEnd = n.start + n.duration;
-      const end = Math.max(start + grid, Math.round((rawEnd - bestOff) / grid) * grid + bestOff);
-      return { ...n, start, duration: end - start };
+      const startTick = timeToTick(n.start, bpm, gridOffset);
+      const rawUnits = Math.max(0.51, n.duration / sixteenth);
+      return { n, startTick, rawUnits };
     })
-    .sort((a, b) => a.start - b.start);
+    .sort((a, b) => a.startTick - b.startTick || b.rawUnits - a.rawUnits);
 
-  for (let i = 1; i < snapped.length; i++) {
-    const prev = snapped[i - 1];
-    const prevEnd = prev.start + prev.duration;
-    if (snapped[i].start < prevEnd) {
-      const nextStart = snapped[i].start;
-      prev.duration = Math.max(grid, nextStart - prev.start);
-      if (prev.start + prev.duration > nextStart) {
-        snapped[i].start = prev.start + prev.duration;
+  const placed: { n: NoteEvent; startTick: number; units: number }[] = [];
+  for (let i = 0; i < snapped.length; i++) {
+    const cur = snapped[i];
+    const nextStart = snapped[i + 1]?.startTick ?? cur.startTick + 64;
+    const gap = nextStart - cur.startTick;
+    const maxUnits = Math.max(1, gap);
+    let units = snapDurationUnits(cur.rawUnits, maxUnits, cur.startTick);
+    const nextOnBeat = !snapped[i + 1] || (((nextStart % 4) + 4) % 4 === 0);
+    if (nextOnBeat && [2, 4, 8, 16].includes(gap) && cur.rawUnits >= gap * 0.62) {
+      units = gap;
+    } else if (gap >= 1 && gap <= 32 && Math.abs(cur.rawUnits - gap) <= 1.15) {
+      const filled = snapDurationUnits(gap, gap, cur.startTick);
+      if (filled <= maxUnits) units = Math.min(maxUnits, Math.max(units, filled));
+    }
+    if (placed.length) {
+      const prev = placed[placed.length - 1];
+      if (cur.startTick < prev.startTick + prev.units) {
+        prev.units = Math.max(1, cur.startTick - prev.startTick);
       }
     }
+    placed.push({ n: cur.n, startTick: cur.startTick, units });
   }
-  return snapped.filter((n) => n.duration >= grid * 0.9);
+
+  const out = placed
+    .filter((p) => p.units >= 1)
+    .map((p) => ({
+      ...p.n,
+      start: Math.max(0, tickToTime(p.startTick, bpm, gridOffset)),
+      duration: p.units * sixteenth,
+    }));
+
+  return { notes: out, gridOffset };
+}
+
+export function quantizeNotes(notes: NoteEvent[], bpm: number, _division = 4): NoteEvent[] {
+  return quantizeToGrid(notes, bpm).notes;
 }
 
 /** Circle-of-fifths: positive = sharps, negative = flats. */
@@ -362,38 +483,92 @@ export function keyAlterations(tonic: number, mode: "major" | "minor"): Map<numb
   return map;
 }
 
+export const LETTER_PC = [0, 2, 4, 5, 7, 9, 11] as const;
+
+export type NoteSpelling = {
+  letter: number;
+  alter: number;
+  octave: number;
+  /** White-key MIDI used for staff position (letter + octave). */
+  staffMidi: number;
+  printed: "♯" | "♭" | "♮" | null;
+};
+
+function alterMark(alter: number): "♯" | "♭" | "♮" | null {
+  if (alter > 0) return "♯";
+  if (alter < 0) return "♭";
+  return "♮";
+}
+
+function octaveForLetter(midi: number, writtenPc: number): number {
+  const rounded = Math.round(midi);
+  let oct = Math.floor(rounded / 12) - 1;
+  const naturalMidi = (oct + 1) * 12 + writtenPc;
+  if (rounded - naturalMidi > 6) oct += 1;
+  if (naturalMidi - rounded > 6) oct -= 1;
+  return oct;
+}
+
 /**
- * Accidental to print next to a note, given the key signature.
- * Uses letter spelling (C D E F G A B) so F# in G major is silent,
- * and F natural needs a natural.
+ * Spell a MIDI pitch in this key (letter + accidental + staff line).
+ * F♯ in G major sits on F with no printed accidental; F♮ needs a natural.
  */
+export function spellNote(midi: number, tonic: number, mode: "major" | "minor"): NoteSpelling {
+  const pc = ((Math.round(midi) % 12) + 12) % 12;
+  const alters = keyAlterations(tonic, mode);
+  const preferFlat = prefersFlats(tonic, mode);
+
+  for (let letter = 0; letter < 7; letter++) {
+    const natural = LETTER_PC[letter];
+    const keyAlt = alters.get(natural) ?? 0;
+    if ((natural + keyAlt + 12) % 12 === pc) {
+      const octave = octaveForLetter(midi, natural);
+      return {
+        letter,
+        alter: keyAlt,
+        octave,
+        staffMidi: (octave + 1) * 12 + natural,
+        printed: null,
+      };
+    }
+  }
+
+  const candidates: { letter: number; alter: number }[] = [];
+  for (let letter = 0; letter < 7; letter++) {
+    const natural = LETTER_PC[letter];
+    let alter = pc - natural;
+    if (alter > 6) alter -= 12;
+    if (alter < -6) alter += 12;
+    if (alter < -2 || alter > 2) continue;
+    candidates.push({ letter, alter });
+  }
+  candidates.sort((a, b) => {
+    const aOdd = Math.abs(a.alter);
+    const bOdd = Math.abs(b.alter);
+    if (aOdd !== bOdd) return aOdd - bOdd;
+    if (preferFlat && a.alter !== b.alter) return a.alter - b.alter;
+    if (!preferFlat && a.alter !== b.alter) return b.alter - a.alter;
+    return a.letter - b.letter;
+  });
+  const pick = candidates[0] ?? { letter: 0, alter: 0 };
+  const natural = LETTER_PC[pick.letter];
+  const keyAlt = alters.get(natural) ?? 0;
+  const octave = octaveForLetter(midi, natural);
+  return {
+    letter: pick.letter,
+    alter: pick.alter,
+    octave,
+    staffMidi: (octave + 1) * 12 + natural,
+    printed: pick.alter === keyAlt ? null : alterMark(pick.alter),
+  };
+}
+
 export function printedAccidental(
   midi: number,
   tonic: number,
   mode: "major" | "minor",
 ): "♯" | "♭" | "♮" | null {
-  const pc = ((Math.round(midi) % 12) + 12) % 12;
-  const alters = keyAlterations(tonic, mode);
-  const LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
-  let bestLetter = 0;
-  let bestDist = 99;
-  for (let letter = 0; letter < 7; letter++) {
-    const natural = LETTER_PC[letter];
-    const expected = (natural + (alters.get(natural) ?? 0) + 12) % 12;
-    const dist = Math.min((pc - expected + 12) % 12, (expected - pc + 12) % 12);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestLetter = letter;
-    }
-  }
-  const natural = LETTER_PC[bestLetter];
-  const keyAlt = alters.get(natural) ?? 0;
-  const expected = (natural + keyAlt + 12) % 12;
-  if (pc === expected) return null;
-  const writtenAlt = ((pc - natural + 12) % 12);
-  if (writtenAlt === 0) return keyAlt !== 0 ? "♮" : null;
-  if (writtenAlt === 1 || writtenAlt === 2) return "♯";
-  return "♭";
+  return spellNote(midi, tonic, mode).printed;
 }
 
 /** Treble-clef key-signature mark positions as MIDI (for staffY). */

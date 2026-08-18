@@ -6,7 +6,7 @@ import {
   correctOctaves,
   detectKey,
   makeNoteId,
-  quantizeNotes,
+  quantizeToGrid,
   resetNoteIds,
   snapMidi,
 } from "./notes";
@@ -313,7 +313,14 @@ export function buildResult(
 ): AnalysisResult {
   let notes = segmentNotes(track, opts);
   const bpm = opts.bpm ?? detectBpm(track);
-  if (opts.quantize !== false) notes = quantizeNotes(notes, bpm);
+  let gridOffset = 0;
+  if (opts.quantize !== false) {
+    const q = quantizeToGrid(notes, bpm);
+    notes = q.notes;
+    gridOffset = q.gridOffset;
+  } else {
+    gridOffset = notes.length ? notes[0].start : 0;
+  }
   return {
     notes,
     chords: [],
@@ -323,6 +330,7 @@ export function buildResult(
     sampleRate,
     waveform,
     pitchTrack: track,
+    gridOffset,
   };
 }
 
@@ -347,6 +355,7 @@ export async function analyzeMelody(
   result.chords = await detectChords(buffer, {
     bpm: result.bpm,
     key: result.key,
+    gridOffset: result.gridOffset ?? 0,
     startSeconds: opts.startSeconds ?? 0,
     duration,
     melody: result.notes,
