@@ -2,7 +2,8 @@ import type { NoteEvent } from "./notes";
 import type { BasicPitchNote } from "./basic-pitch-options";
 import { BASIC_PITCH_RATE } from "./basic-pitch-options";
 import { pickMelodyNotes, toPuguNotes } from "./basic-pitch-notes";
-import { refineMelody } from "./refine-melody";
+import { refineMelody, refineMelodyDetail } from "./refine-melody";
+import type { PitchFrame } from "./notes";
 
 export { pickMelodyNotes, toPuguNotes };
 
@@ -93,10 +94,16 @@ async function runOnMain(
   return notesFromActivations(frames, onsets, contours);
 }
 
-export async function transcribeMelody(
+export type TranscribeDetail = {
+  notes: NoteEvent[];
+  pitchTrack: PitchFrame[];
+  rawPitchTrack: PitchFrame[];
+};
+
+export async function transcribeMelodyDetail(
   buffer: AudioBuffer,
   onProgress?: (pct: number) => void,
-): Promise<NoteEvent[]> {
+): Promise<TranscribeDetail> {
   const audio = await resampleMono22050(buffer);
   let raw: BasicPitchNote[];
   try {
@@ -104,5 +111,20 @@ export async function transcribeMelody(
   } catch {
     raw = await runOnMain(audio, onProgress);
   }
-  return toPuguNotes(refineMelody(pickMelodyNotes(raw), audio, BASIC_PITCH_RATE));
+  const refined = refineMelodyDetail(pickMelodyNotes(raw), audio, BASIC_PITCH_RATE);
+  return {
+    notes: toPuguNotes(refined.notes),
+    pitchTrack: refined.pitchTrack,
+    rawPitchTrack: refined.rawPitchTrack,
+  };
 }
+
+export async function transcribeMelody(
+  buffer: AudioBuffer,
+  onProgress?: (pct: number) => void,
+): Promise<NoteEvent[]> {
+  const detail = await transcribeMelodyDetail(buffer, onProgress);
+  return detail.notes;
+}
+
+export { refineMelody };

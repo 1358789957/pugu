@@ -436,19 +436,25 @@ export async function analyzeMelody(
   const waveform = waveformFromBuffer(region);
 
   let sourceNotes: NoteEvent[] | undefined;
+  let contourTrack: PitchFrame[] | undefined;
+  let rawContourTrack: PitchFrame[] | undefined;
   try {
-    const { transcribeMelody } = await import("./basic-pitch");
-    const transcribed = await transcribeMelody(region, (pct) => {
+    const { transcribeMelodyDetail } = await import("./basic-pitch");
+    const transcribed = await transcribeMelodyDetail(region, (pct) => {
       onProgress?.(0.32 + pct * 0.5, "Basic Pitch 转音符");
     });
-    sourceNotes = start > 0
-      ? transcribed.map((n) => ({
+    const shift = start > 0 ? start : 0;
+    sourceNotes = shift
+      ? transcribed.notes.map((n) => ({
           ...n,
-          start: n.start + start,
-          rawStart: (n.rawStart ?? n.start) + start,
+          start: n.start + shift,
+          rawStart: (n.rawStart ?? n.start) + shift,
         }))
-      : transcribed;
+      : transcribed.notes;
     if (!sourceNotes.length) sourceNotes = undefined;
+    const bump = (f: PitchFrame) => (shift ? { ...f, t: f.t + shift } : f);
+    contourTrack = transcribed.pitchTrack.map(bump);
+    rawContourTrack = transcribed.rawPitchTrack.map(bump);
   } catch (err) {
     console.warn("Basic Pitch failed, falling back to YIN", err);
     sourceNotes = undefined;
@@ -460,8 +466,9 @@ export async function analyzeMelody(
 
   if (sourceNotes?.length) {
     onProgress?.(0.84, "整理音符");
-    track = notesToPitchTrack(sourceNotes, duration, start);
+    track = contourTrack?.length ? contourTrack : notesToPitchTrack(sourceNotes, duration, start);
     result = buildResult(track, waveform, sampleRate, duration, opts, sourceNotes);
+    result.rawPitchTrack = rawContourTrack;
   } else {
     const extracted = await extractPitchTrack(
       work,

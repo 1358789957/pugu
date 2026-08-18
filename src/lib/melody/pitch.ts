@@ -5,6 +5,8 @@ export type YinOptions = {
   threshold?: number;
   minHz?: number;
   maxHz?: number;
+  /** When false, keep the measured period (no B3→B4 half-tau jump). */
+  preferOctaveUp?: boolean;
 };
 
 /**
@@ -64,10 +66,11 @@ export function yinPitch(
     tauEst = bestTau;
   }
 
-  // Prefer the higher octave when the half-period is also a clean dip.
-  const half = Math.round(tauEst / 2);
-  if (half >= tauMin && cmnd[half] < Math.min(0.22, cmnd[tauEst] + 0.08)) {
-    tauEst = half;
+  if (opts.preferOctaveUp !== false) {
+    const half = Math.round(tauEst / 2);
+    if (half >= tauMin && cmnd[half] < Math.min(0.22, cmnd[tauEst] + 0.08)) {
+      tauEst = half;
+    }
   }
 
   const x0 = Math.max(tauMin, tauEst - 1);

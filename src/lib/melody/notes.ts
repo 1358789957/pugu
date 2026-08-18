@@ -29,6 +29,10 @@ export type PitchFrame = {
   cents: number;
   conf: number;
   rms: number;
+  /** 1/f0 when voiced or wavelength-continued. */
+  periodSec?: number;
+  /** True when this sample was completed from a neighbor period. */
+  filled?: boolean;
 };
 
 export type DetectedKey = {
@@ -46,7 +50,10 @@ export type AnalysisResult = {
   duration: number;
   sampleRate: number;
   waveform: Float32Array;
+  /** Wavelength-filled 音调仪 contour (time × pitch). */
   pitchTrack: PitchFrame[];
+  /** Raw tuner frames before wavelength-continue. Breaks are unvoiced. */
+  rawPitchTrack?: PitchFrame[];
   /** Time of a 4/4 downbeat. Barlines sit at gridOffset + n * (4 beats). */
   gridOffset?: number;
   /** Unquantized melody from Basic Pitch (or YIN fallback). Resegment uses this. */

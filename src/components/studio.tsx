@@ -56,6 +56,7 @@ export function Studio({
           sampleRate: 16000,
           waveform: new Float32Array(0),
           pitchTrack: [],
+          rawPitchTrack: [],
           gridOffset: findGridOffset(initial.notes, initial.bpm),
         }
       : null,
@@ -140,7 +141,7 @@ export function Studio({
         nextOpts,
         current.sourceNotes,
       );
-      const merged = { ...next, chords: current.chords ?? [] };
+      const merged = { ...next, chords: current.chords ?? [], rawPitchTrack: current.rawPitchTrack };
       resultRef.current = merged;
       setResult(merged);
       setSelectedId(null);
@@ -677,10 +678,10 @@ export function Studio({
               </TabsContent>
               <TabsContent value="curve" className="mt-3">
                 {result.pitchTrack.length ? (
-                  <PitchCurve result={result} currentTime={currentTime} />
+                  <PitchCurve result={result} currentTime={currentTime} onSeek={seek} />
                 ) : (
                   <p className="rounded-lg border border-border bg-surface p-8 text-sm text-muted">
-                    从曲库打开的稿件没有原始音高曲线，重新上传即可查看。
+                    从曲库打开的稿件没有音调仪音高线，重新上传即可查看。
                   </p>
                 )}
               </TabsContent>
