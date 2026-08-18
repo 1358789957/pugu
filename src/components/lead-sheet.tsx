@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   buildLeadSheet,
@@ -7,6 +8,7 @@ import {
   type LeadLine,
   type LyricLine,
 } from "@/lib/melody/leadsheet";
+import { renderScorePng } from "@/lib/melody/score-image";
 import { prefersFlats, type AnalysisResult } from "@/lib/melody/notes";
 import { cn, downloadBlob } from "@/lib/utils";
 
@@ -37,12 +39,33 @@ export function LeadSheet({
     [lines, title, keyMark, result.key.name, result.bpm],
   );
 
+  const [exporting, setExporting] = useState(false);
+
   function copy() {
     void navigator.clipboard?.writeText(plain);
   }
 
   function save() {
     downloadBlob(new Blob([plain], { type: "text/plain;charset=utf-8" }), `${title || "leadsheet"}.txt`);
+  }
+
+  async function saveImage() {
+    setExporting(true);
+    try {
+      const blob = await renderScorePng(lines, {
+        title: title || "词谱",
+        keyMark,
+        keyName: result.key.name,
+        bpm: result.bpm,
+      });
+      downloadBlob(blob, `${title || "词谱"}.png`);
+      toast.success("已导出白底词谱图");
+    } catch (err) {
+      console.error(err);
+      toast.error("导出图片失败");
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -55,6 +78,9 @@ export function LeadSheet({
           </Button>
           <Button size="sm" variant="secondary" onClick={save}>
             下载词谱
+          </Button>
+          <Button size="sm" onClick={() => void saveImage()} disabled={exporting || !lines.length}>
+            {exporting ? "出图中…" : "导出白底图"}
           </Button>
         </div>
       </div>
