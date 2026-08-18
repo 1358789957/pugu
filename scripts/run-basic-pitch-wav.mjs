@@ -38,12 +38,20 @@ class FileIOHandler {
   }
 }
 
-export async function transcribeWavSamples(samples, _opts = BASIC_PITCH_OPTS) {
+let cachedModel = null;
+
+async function loadBasicPitch() {
+  if (cachedModel) return cachedModel;
   await tf.setBackend("cpu");
   await tf.ready();
   const modelDir = join(root, "public/basic-pitch");
   const graph = await tf.loadGraphModel(new FileIOHandler(modelDir));
-  const model = new BasicPitch(Promise.resolve(graph));
+  cachedModel = new BasicPitch(Promise.resolve(graph));
+  return cachedModel;
+}
+
+export async function transcribeWavSamples(samples, opts = BASIC_PITCH_OPTS) {
+  const model = await loadBasicPitch();
   const frames = [];
   const onsets = [];
   const contours = [];
@@ -56,7 +64,7 @@ export async function transcribeWavSamples(samples, _opts = BASIC_PITCH_OPTS) {
     },
     () => {},
   );
-  const raw = notesFromActivations(frames, onsets, contours);
+  const raw = notesFromActivations(frames, onsets, contours, opts);
   const melody = pickMelodyNotes(raw);
   return { raw, melody };
 }

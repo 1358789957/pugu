@@ -13,8 +13,9 @@ export function notesFromActivations(
   frames: number[][],
   onsets: number[][],
   contours: number[][],
+  opts: BasicPitchDecodeOpts = BASIC_PITCH_OPTS,
 ): BasicPitchNote[] {
-  const primary = decodePass(frames, onsets, BASIC_PITCH_OPTS);
+  const primary = decodePass(frames, onsets, opts);
   return noteFramesToTime(addPitchBendsToNoteEvents(contours, primary));
 }
 
