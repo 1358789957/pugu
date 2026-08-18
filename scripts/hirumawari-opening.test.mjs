@@ -52,10 +52,10 @@ test("固定调: C-major 第一句 / 第二句 are not G-audio numbering", () =>
     [...HIRUMAWARI_OPENING_C],
   );
 
-  // 第二句: A B C B C C C B G C D C E. G-audio is +7, 固定调 3 #4 5… ≠ C string.
-  const c2 = [69, 71, 72, 71, 72, 72, 72, 71, 67, 72, 74, 72, 76];
+  // 第二句: A B C C C C C B G C D C E. G-audio is +7, 固定调 3 #4 5 5 5 5 5… ≠ C string.
+  const c2 = [69, 71, 72, 72, 72, 72, 72, 71, 67, 72, 74, 72, 76];
   assert.deepEqual(cMajorDegrees(c2, 0), [...HIRUMAWARI_PHRASE2_C]);
-  const g2 = [64, 66, 67, 66, 67, 67, 67, 66, 62, 67, 69, 67, 71];
+  const g2 = [64, 66, 67, 67, 67, 67, 67, 66, 62, 67, 69, 67, 71];
   assert.deepEqual(cMajorDegrees(g2, 7), [...HIRUMAWARI_PHRASE2_C]);
   assert.deepEqual(
     g2.map((m) => jianpuDegree(m)),
@@ -90,7 +90,7 @@ test("hirumawari dry-vocal 第一句, transposed to C, is 12323432712271", async
   );
 });
 
-test("hirumawari dry-vocal 第二句, transposed to C, is 6717111751213", async (t) => {
+test("hirumawari dry-vocal 第二句, transposed to C, is 6711111751213", async (t) => {
   if (!existsSync(VOCAL_WAV)) {
     t.skip("examples/hirumawari vocal wav is not in this checkout");
     return;
