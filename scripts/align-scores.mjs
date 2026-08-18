@@ -73,7 +73,10 @@ async function transcribeSynth(song) {
     ...n,
     midi: clampToMelodyBand(n.midi),
   }));
-  const { samples, sampleRate } = renderScoreSamples(score, { bpm: SYNTH_ALIGN_BPM, gap: 0.1 });
+  const { samples, sampleRate } = renderScoreSamples(score, {
+    bpm: SYNTH_ALIGN_BPM,
+    gap: song.synthGap ?? 0.1,
+  });
   return transcribeSamples(samples, sampleRate, song.tonicPc);
 }
 

@@ -78,6 +78,8 @@ export type PopPhraseFixture = {
   liveAudio: "hirumawari-vocal" | null;
   /** Optional per-note beats for triangle synth (site holds). */
   synthBeats?: readonly number[];
+  /** Optional triangle-synth inter-note gap in seconds (default 0.1). */
+  synthGap?: number;
 };
 
 const TONIC_B = 11;
@@ -269,8 +271,9 @@ export const POP_PHRASE_FIXTURES: PopPhraseFixture[] = [
     publishedMovableDo: BUNENG_SHUO_DE_MIMI_PUBLISHED,
     cMajorFixed: null,
     liveAudio: null,
-    // Site `4_4_4_4_4_3=3=-`: hold the two 3s so BP does not stick on 4.
+    // Site `4_4_4_4_4_3=3=-`. After five 4s, BP sticks on C unless the synth gap is ~0.24–0.32s.
     synthBeats: [1, 1, 1, 1, 1, 1, 2, 2],
+    synthGap: 0.26,
   },
   {
     id: "guyongzhe",
