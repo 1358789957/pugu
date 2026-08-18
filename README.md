@@ -28,7 +28,7 @@ npm run dev
 3. 工程速度改成检测出来的 BPM
 4. 一般会有两条轨：旋律 + 和弦垫底
 
-示例扒谱：《昼回のメモリー》→ [hirumawari-memory](https://github.com/1358789957/hirumawari-memory)
+示例扒谱在 [examples/hirumawari](./examples/hirumawari)：原曲 MP3、库乐队 MIDI、人声 WAV、词谱。
 
 ## 技术
 
