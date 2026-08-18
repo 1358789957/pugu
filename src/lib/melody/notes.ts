@@ -5,6 +5,9 @@ export type NoteEvent = {
   duration: number;
   velocity: number;
   confidence: number;
+  /** Unquantized analysis time. MIDI export uses this; the staff stays on `start`. */
+  rawStart?: number;
+  rawDuration?: number;
 };
 
 export type ChordQuality = "maj" | "min" | "7" | "m7" | "sus4" | "dim";
@@ -439,6 +442,8 @@ export function quantizeToGrid(notes: NoteEvent[], bpm: number): QuantizeResult 
       ...p.n,
       start: Math.max(0, tickToTime(p.startTick, bpm, gridOffset)),
       duration: p.units * sixteenth,
+      rawStart: p.n.rawStart ?? p.n.start,
+      rawDuration: p.n.rawDuration ?? p.n.duration,
     }));
 
   return { notes: out, gridOffset };

@@ -44,6 +44,20 @@ function textMeta(type: number, text: string): number[] {
   return [0xff, type, ...vlq(data.length), ...data];
 }
 
+/** GarageBand iOS is happiest with 7-bit ASCII track / marker names. */
+export function asciiTrackName(text: string, fallback = "Melody"): string {
+  const cleaned = text
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (cleaned || fallback).slice(0, 32);
+}
+
+export function asciiChordSymbol(symbol: string): string {
+  return asciiTrackName(symbol.replace(/♯/g, "#").replace(/♭/g, "b"), "N.C.");
+}
+
 export type MidiNote = {
   midi: number;
   tick: number;
@@ -51,24 +65,30 @@ export type MidiNote = {
   velocity: number;
 };
 
+export function noteExportTime(n: NoteEvent): { start: number; duration: number } {
+  const start = Number.isFinite(n.rawStart) ? (n.rawStart as number) : n.start;
+  const duration = Number.isFinite(n.rawDuration) ? (n.rawDuration as number) : n.duration;
+  return { start, duration: Math.max(1e-4, duration) };
+}
+
+export function secondsToTicks(seconds: number, bpm: number, ppq = MIDI_PPQ): number {
+  const safeBpm = Math.max(40, Math.min(220, bpm || 100));
+  return Math.round(seconds * (safeBpm / 60) * ppq);
+}
+
 /**
- * Convert seconds-based notes onto a musical 16th-note grid.
- * The first note becomes bar 1 beat 1 (tick 0) so a DAW piano roll
- * opens with the melody already laid out, not floating after a pickup gap.
+ * Seconds → ticks at 1-tick resolution (the analysis time, not the engraved 16th grid).
+ * The first onset is tick 0 so GarageBand opens on the melody instead of a pickup gap.
  */
 export function notesToTicks(notes: NoteEvent[], bpm: number, ppq = MIDI_PPQ): MidiNote[] {
   if (!notes.length) return [];
-  const safeBpm = Math.max(40, Math.min(220, bpm || 100));
-  const sixteenth = 60 / safeBpm / 4;
-  const ticksPer16 = ppq / 4;
-  const first = Math.min(...notes.map((n) => n.start));
+  const first = Math.min(...notes.map((n) => noteExportTime(n).start));
   return notes.map((n) => {
-    const start16 = Math.max(0, Math.round((n.start - first) / sixteenth));
-    const dur16 = Math.max(1, Math.round(n.duration / sixteenth));
+    const { start, duration } = noteExportTime(n);
     return {
       midi: Math.max(0, Math.min(127, Math.round(n.midi))),
-      tick: start16 * ticksPer16,
-      durationTicks: dur16 * ticksPer16,
+      tick: Math.max(0, secondsToTicks(start - first, bpm, ppq)),
+      durationTicks: Math.max(1, secondsToTicks(duration, bpm, ppq)),
       velocity: n.velocity,
     };
   });
@@ -82,8 +102,8 @@ export type MidiWriteMeta = {
 };
 
 /**
- * Type-1 MIDI: conductor track (tempo / meter / key) + melody track.
- * Notes sit on a 16th grid starting at bar 1 so they drop onto a DAW roll.
+ * Type-1 MIDI for GarageBand: conductor (tempo / 4/4 / key) + piano melody + optional chord pad.
+ * Melody onsets are tick-accurate; chords stay on a beat grid.
  */
 export function notesToMidi(notes: NoteEvent[], metaInfo: MidiWriteMeta | number): Uint8Array {
   const info: MidiWriteMeta = typeof metaInfo === "number" ? { bpm: metaInfo } : metaInfo;
@@ -92,7 +112,7 @@ export function notesToMidi(notes: NoteEvent[], metaInfo: MidiWriteMeta | number
   const usec = Math.round(60_000_000 / bpm);
   const sf = keySignatureCount(info.key?.tonic ?? 0, info.key?.mode ?? "major") & 0xff;
   const mi = info.key?.mode === "minor" ? 1 : 0;
-  const title = (info.title || "Melody").slice(0, 64);
+  const title = asciiTrackName(info.title || "Melody");
 
   const tempoTrack: MidiEvent[] = [
     { tick: 0, rank: 0, bytes: meta(0x51, [(usec >> 16) & 0xff, (usec >> 8) & 0xff, usec & 0xff]) },
@@ -106,7 +126,8 @@ export function notesToMidi(notes: NoteEvent[], metaInfo: MidiWriteMeta | number
     { tick: 0, rank: 1, bytes: [0xc0, 0x00] },
   ];
 
-  for (const n of notesToTicks(notes, bpm, ppq)) {
+  const timed = notesToTicks(notes, bpm, ppq);
+  for (const n of timed) {
     const vel = Math.max(1, Math.min(127, Math.round(n.velocity * 110 + 12)));
     melody.push({ tick: n.tick, rank: 5, bytes: [0x90, n.midi, vel] });
     melody.push({ tick: n.tick + n.durationTicks, rank: 4, bytes: [0x80, n.midi, 0x00] });
@@ -118,17 +139,18 @@ export function notesToMidi(notes: NoteEvent[], metaInfo: MidiWriteMeta | number
   const tracks = [encodeTrack(tempoTrack), encodeTrack(melody)];
 
   if (info.chords?.length) {
-    const firstNote = notes.length ? Math.min(...notes.map((n) => n.start)) : 0;
+    const firstNote = notes.length ? Math.min(...notes.map((n) => noteExportTime(n).start)) : 0;
+    const beat = 60 / bpm;
     const chordTrack: MidiEvent[] = [
       { tick: 0, rank: 0, bytes: textMeta(0x03, "Chords") },
-      { tick: 0, rank: 1, bytes: [0xc0, 48] }, // strings
+      { tick: 0, rank: 1, bytes: [0xc1, 48] },
     ];
     for (const c of info.chords) {
-      const start16 = Math.max(0, Math.round((c.start - firstNote) / (60 / bpm / 4)));
-      const dur16 = Math.max(2, Math.round(c.duration / (60 / bpm / 4)));
-      const tick = start16 * (ppq / 4);
-      const dur = dur16 * (ppq / 4);
-      chordTrack.push({ tick, rank: 2, bytes: textMeta(0x06, c.symbol) });
+      const startBeat = Math.max(0, Math.round((c.start - firstNote) / beat));
+      const durBeat = Math.max(1, Math.round(c.duration / beat));
+      const tick = startBeat * ppq;
+      const dur = durBeat * ppq;
+      chordTrack.push({ tick, rank: 2, bytes: textMeta(0x06, asciiChordSymbol(c.symbol)) });
       for (const m of voicingFor(c.root, c.quality)) {
         chordTrack.push({ tick, rank: 5, bytes: [0x91, m, 0x46] });
         chordTrack.push({ tick: tick + dur, rank: 4, bytes: [0x81, m, 0x00] });
@@ -178,14 +200,19 @@ export function notesToJson(
         start: Number(c.start.toFixed(3)),
         duration: Number(c.duration.toFixed(3)),
       })),
-      notes: notes.map((n, i) => ({
-        pitch: n.midi,
-        start: Number(n.start.toFixed(4)),
-        duration: Number(n.duration.toFixed(4)),
-        velocity: Number(n.velocity.toFixed(3)),
-        tick: ticks[i]?.tick ?? 0,
-        durationTicks: ticks[i]?.durationTicks ?? 0,
-      })),
+      notes: notes.map((n, i) => {
+        const raw = noteExportTime(n);
+        return {
+          pitch: n.midi,
+          start: Number(n.start.toFixed(4)),
+          duration: Number(n.duration.toFixed(4)),
+          rawStart: Number(raw.start.toFixed(4)),
+          rawDuration: Number(raw.duration.toFixed(4)),
+          velocity: Number(n.velocity.toFixed(3)),
+          tick: ticks[i]?.tick ?? 0,
+          durationTicks: ticks[i]?.durationTicks ?? 0,
+        };
+      }),
     },
     null,
     2,

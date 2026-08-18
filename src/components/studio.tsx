@@ -325,7 +325,7 @@ export function Studio({
       }),
       `${name}.mid`,
     );
-    toast.success(`已导出库乐队 MIDI · ${Math.round(result.bpm)} BPM · 拖进音轨即可`);
+    toast.success(`已导出库乐队 MIDI · 精细时值 · ${Math.round(result.bpm)} BPM`);
   }
 
   function exportVocals() {

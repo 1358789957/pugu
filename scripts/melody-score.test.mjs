@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { TWINKLE, DEMO_BPM } from "../src/lib/melody/demo.ts";
 import { midiToJianpu, buildLeadSheet } from "../src/lib/melody/leadsheet.ts";
-import { notesToTicks } from "../src/lib/melody/midi.ts";
+import { asciiTrackName, notesToMidi, notesToTicks } from "../src/lib/melody/midi.ts";
 import { notateScore } from "../src/lib/melody/notation.ts";
 import {
   makeNoteId,
@@ -134,16 +134,46 @@ test("lead sheet is four bars per line with barlines", () => {
   assert.ok(lines[0].cells.some((c) => c.jianpu === "1"));
 });
 
-test("MIDI ticks stay on a 16th grid and start at bar 1", () => {
-  const { notes } = quantizeToGrid(scoreToNotes(TWINKLE, DEMO_BPM), DEMO_BPM);
-  const ticks = notesToTicks(notes, DEMO_BPM);
+test("MIDI keeps every analysis note at 1-tick resolution, not a 16th grid", () => {
+  const bpm = 117;
+  const raw = [
+    { id: "a", midi: 67, start: 1.103, duration: 0.337, velocity: 0.7, confidence: 0.9 },
+    { id: "b", midi: 69, start: 1.441, duration: 0.198, velocity: 0.6, confidence: 0.88 },
+    { id: "c", midi: 71, start: 1.72, duration: 0.412, velocity: 0.8, confidence: 0.91 },
+    { id: "d", midi: 71, start: 2.201, duration: 0.255, velocity: 0.7, confidence: 0.86 },
+    { id: "e", midi: 69, start: 2.54, duration: 0.61, velocity: 0.65, confidence: 0.84 },
+  ];
+  const { notes } = quantizeToGrid(raw, bpm);
+  assert.equal(notes.length, raw.length);
+  assert.ok(notes.every((n) => Number.isFinite(n.rawStart)));
+  const ticks = notesToTicks(notes, bpm);
+  assert.equal(ticks.length, raw.length);
   assert.equal(ticks[0].tick, 0);
-  assert.equal(ticks[0].durationTicks, 480);
-  assert.equal(ticks[6].durationTicks, 960);
-  for (const n of ticks) {
-    assert.equal(n.tick % 120, 0);
-    assert.equal(n.durationTicks % 120, 0);
+  assert.deepEqual(
+    ticks.map((t) => t.midi),
+    raw.map((n) => n.midi),
+  );
+  const onSixteenth = ticks.filter((n) => n.tick % 120 === 0).length;
+  assert.ok(onSixteenth <= 1, `onsets should not sit on 16ths, got ${onSixteenth}/${ticks.length}`);
+  for (const n of ticks) assert.ok(n.durationTicks >= 1);
+
+  const bytes = notesToMidi(notes, { bpm, title: "昼回のメモリー", key: { tonic: 7, mode: "major" } });
+  assert.equal(bytes[8], 0);
+  assert.equal(bytes[9], 1);
+  assert.equal((bytes[12] << 8) | bytes[13], 480);
+  const text = Buffer.from(bytes).toString("latin1");
+  assert.match(text, /Melody/);
+  assert.doesNotMatch(text, /昼回/);
+  const noteOns = [];
+  for (let i = 0; i < bytes.length - 2; i++) {
+    if (bytes[i] === 0x90 && bytes[i + 2] > 0) noteOns.push(bytes[i + 1]);
   }
+  assert.equal(noteOns.length, raw.length);
+});
+
+test("ASCII track names strip non-English glyphs", () => {
+  assert.equal(asciiTrackName("昼回のメモリー"), "Melody");
+  assert.equal(asciiTrackName("hirumawari2"), "hirumawari2");
 });
 
 test("chords snap to two-beat cells and merge neighbors", () => {
