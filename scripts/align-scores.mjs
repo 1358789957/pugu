@@ -8,6 +8,7 @@ import {
   matchFirstPhrase,
   publishedToScore,
   synthTonicMidi,
+  clampToMelodyBand,
 } from "../src/lib/melody/pop-phrase-fixtures.ts";
 import { renderScoreSamples } from "../src/lib/melody/render-score.ts";
 import { cMajorDegrees, jianpuDegree } from "../src/lib/melody/leadsheet.ts";
@@ -68,7 +69,10 @@ async function transcribeHirumawari(which) {
 
 async function transcribeSynth(song) {
   const tonic = synthTonicMidi(song.publishedMovableDo, song.tonicMidi);
-  const score = publishedToScore(song.publishedMovableDo, tonic);
+  const score = publishedToScore(song.publishedMovableDo, tonic).map((n) => ({
+    ...n,
+    midi: clampToMelodyBand(n.midi),
+  }));
   const { samples, sampleRate } = renderScoreSamples(score, { bpm: SYNTH_ALIGN_BPM, gap: 0.1 });
   return transcribeSamples(samples, sampleRate, song.tonicPc);
 }

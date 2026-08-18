@@ -2,11 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ALIGN_SONGS,
+  BUNENG_SHUO_DE_MIMI_PUBLISHED,
   DAOXIANG_PUBLISHED,
   GAOBAI_QIQU_C,
   GAOBAI_QIQU_PUBLISHED,
+  GUYONGZHE_C,
+  GUYONGZHE_PUBLISHED,
+  HOULAI_PUBLISHED,
+  JIANGNAN_PUBLISHED,
   QIFENGLE_PUBLISHED,
   QINGHUACI_PUBLISHED,
+  TIMIAN_PUBLISHED,
+  XIAOQINGGE_PUBLISHED,
   YEKONG_C,
   YEKONG_PUBLISHED,
   expectedDegrees,
@@ -26,6 +33,12 @@ test("ALIGN_SONGS is pop-only; published 首调 is source of truth", () => {
     "qinghuaci",
     "daoxiang",
     "qifengle",
+    "jiangnan",
+    "houlai",
+    "timian",
+    "buneng-shuo-de-mimi",
+    "guyongzhe",
+    "xiaoqingge",
     "hirumawari-1",
     "hirumawari-2",
   ]);
@@ -38,13 +51,32 @@ test("ALIGN_SONGS is pop-only; published 首调 is source of truth", () => {
   assert.deepEqual([...QINGHUACI_PUBLISHED], ["2", "1", "6,", "1", "1", "6,", "1", "1", "6,", "1", "6,", "5,"]);
   assert.deepEqual([...DAOXIANG_PUBLISHED], ["1", "1", "6,", "1", "6,", "1", "1", "1", "2", "2", "2", "2", "3", "1"]);
   assert.deepEqual([...QIFENGLE_PUBLISHED], ["2", "1", "2", "1", "2", "3", "5", "3"]);
+  assert.deepEqual([...JIANGNAN_PUBLISHED], ["6,", "7,", "1", "5", "3", "1", "6,", "7,", "7,", "7,", "1", "7,", "5,", "6,"]);
+  assert.deepEqual([...HOULAI_PUBLISHED], ["1", "7,", "1", "3,", "4,", "5,"]);
+  assert.deepEqual([...TIMIAN_PUBLISHED], ["5,", "3", "3", "2", "3", "3", "2", "3", "3", "2", "3", "7,"]);
+  assert.deepEqual([...BUNENG_SHUO_DE_MIMI_PUBLISHED], ["5,", "4", "4", "4", "4", "4", "3", "3"]);
+  assert.deepEqual([...GUYONGZHE_PUBLISHED], ["3", "1", "2", "1", "3"]);
+  assert.deepEqual(GUYONGZHE_C, ["#2", "7", "#1", "7", "#2"]);
+  assert.deepEqual([...XIAOQINGGE_PUBLISHED], ["1", "7,", "1", "7,", "1", "7,", "5,", "3,", "5,", "7,", "6"]);
 
   const qinghua = ALIGN_SONGS.find((s) => s.id === "qinghuaci");
   const dao = ALIGN_SONGS.find((s) => s.id === "daoxiang");
   const qi = ALIGN_SONGS.find((s) => s.id === "qifengle");
+  const jiang = ALIGN_SONGS.find((s) => s.id === "jiangnan");
+  const hou = ALIGN_SONGS.find((s) => s.id === "houlai");
+  const ti = ALIGN_SONGS.find((s) => s.id === "timian");
+  const mi = ALIGN_SONGS.find((s) => s.id === "buneng-shuo-de-mimi");
+  const xiao = ALIGN_SONGS.find((s) => s.id === "xiaoqingge");
   assert.equal(qinghua.cMajorFixed, null);
   assert.equal(dao.cMajorFixed, null);
   assert.equal(qi.cMajorFixed, null);
+  assert.equal(jiang.cMajorFixed, null);
+  assert.equal(hou.cMajorFixed, null);
+  assert.equal(ti.cMajorFixed, null);
+  assert.equal(mi.cMajorFixed, null);
+  assert.equal(xiao.cMajorFixed, null);
+  assert.deepEqual(ALIGN_SONGS.find((s) => s.id === "guyongzhe")?.cMajorFixed, GUYONGZHE_C);
+  assert.deepEqual(expectedDegrees(jiang), stripOctaveMarks(JIANGNAN_PUBLISHED));
   assert.deepEqual(expectedDegrees(qinghua), stripOctaveMarks(QINGHUACI_PUBLISHED));
   assert.deepEqual(publishedToScore(QIFENGLE_PUBLISHED, 54).map((n) => n.midi), [56, 54, 56, 54, 56, 58, 61, 58]);
 

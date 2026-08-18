@@ -3,9 +3,9 @@
  * No copyrighted audio, no full scores, no nursery-rhyme rulers.
  *
  * Source of truth is the published 首调 string plus the site `/key(...)`.
- * C=1 固定调 is only stored when already locked (昼回) or previously
- * derived from 1=B concert pitches (告白气球 / 夜空). New A / Gb lines
- * keep published movable-do only — do not invent a C=1 string.
+ * C=1 固定调 is only stored when already locked (昼回) or derived
+ * from 1=B via movableMajorToCFixed (告白气球 / 夜空 / 孤勇者).
+ * New Bb / Eb / G / D / A / Gb lines keep published movable-do only.
  */
 import type { ScoreNote } from "./demo";
 import { HIRUMAWARI_OPENING_C, HIRUMAWARI_PHRASE2_C } from "./hirumawari-opening";
@@ -49,6 +49,14 @@ export function synthTonicMidi(published: readonly string[], tonicMidi: number):
   return tonicMidi + shift;
 }
 
+/** Keep a synth note in the Basic Pitch vocal band without changing pitch class. */
+export function clampToMelodyBand(midi: number): number {
+  let m = midi;
+  while (m < 55) m += 12;
+  while (m > 79) m -= 12;
+  return m;
+}
+
 export type PopPhraseFixture = {
   id: string;
   title: string;
@@ -69,6 +77,10 @@ export type PopPhraseFixture = {
 const TONIC_B = 11;
 const TONIC_A = 9;
 const TONIC_GB = 6;
+const TONIC_BB = 10;
+const TONIC_EB = 3;
+const TONIC_G = 7;
+const TONIC_D = 2;
 
 export const GAOBAI_QIQU_PUBLISHED = ["1", "1", "7,", "1", "7,", "1", "7,", "1", "2"] as const;
 export const GAOBAI_QIQU_C = movableMajorToCFixed(GAOBAI_QIQU_PUBLISHED, TONIC_B);
@@ -81,6 +93,40 @@ export const QINGHUACI_PUBLISHED = ["2", "1", "6,", "1", "1", "6,", "1", "1", "6
 export const DAOXIANG_PUBLISHED = ["1", "1", "6,", "1", "6,", "1", "1", "1", "2", "2", "2", "2", "3", "1"] as const;
 
 export const QIFENGLE_PUBLISHED = ["2", "1", "2", "1", "2", "3", "5", "3"] as const;
+
+/** 风到这里就是黏 / 黏住过客的思念 */
+export const JIANGNAN_PUBLISHED = [
+  "6,",
+  "7,",
+  "1",
+  "5",
+  "3",
+  "1",
+  "6,",
+  "7,",
+  "7,",
+  "7,",
+  "1",
+  "7,",
+  "5,",
+  "6,",
+] as const;
+
+/** Verse 栀子花 白花瓣 — page prints chorus first. */
+export const HOULAI_PUBLISHED = ["1", "7,", "1", "3,", "4,", "5,"] as const;
+
+/** 别堆砌怀念让剧情 */
+export const TIMIAN_PUBLISHED = ["5,", "3", "3", "2", "3", "3", "2", "3", "3", "2", "3", "7,"] as const;
+
+/** Pickup 5, then 冷咖啡离开了杯垫 */
+export const BUNENG_SHUO_DE_MIMI_PUBLISHED = ["5,", "4", "4", "4", "4", "4", "3", "3"] as const;
+
+/** 都是勇敢的 */
+export const GUYONGZHE_PUBLISHED = ["3", "1", "2", "1", "3"] as const;
+export const GUYONGZHE_C = movableMajorToCFixed(GUYONGZHE_PUBLISHED, TONIC_B);
+
+/** 这是一首简单的小情歌 */
+export const XIAOQINGGE_PUBLISHED = ["1", "7,", "1", "7,", "1", "7,", "5,", "3,", "5,", "7,", "6"] as const;
 
 export const POP_PHRASE_FIXTURES: PopPhraseFixture[] = [
   {
@@ -155,6 +201,96 @@ export const POP_PHRASE_FIXTURES: PopPhraseFixture[] = [
     tonicMidi: 54,
     bpm: 75,
     publishedMovableDo: QIFENGLE_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "jiangnan",
+    title: "江南",
+    artist: "林俊杰",
+    lyricCue: "风到这里就是黏",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/643b8ac73ac403ab8420f6c8",
+    publishedKey: "/key(Bb3)",
+    tonicName: "Bb",
+    tonicPc: TONIC_BB,
+    tonicMidi: 58,
+    bpm: 120,
+    publishedMovableDo: JIANGNAN_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "houlai",
+    title: "后来",
+    artist: "刘若英",
+    lyricCue: "栀子花 白花瓣",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/64971f65adff71bd86e8d5e7",
+    publishedKey: "/key(Eb4)",
+    tonicName: "Eb",
+    tonicPc: TONIC_EB,
+    tonicMidi: 63,
+    bpm: 74.9,
+    publishedMovableDo: HOULAI_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "timian",
+    title: "体面",
+    artist: "于文文",
+    lyricCue: "别堆砌怀念让剧情",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/65675f21bcebbf7e531862d0",
+    publishedKey: "/key(Bb3)",
+    tonicName: "Bb",
+    tonicPc: TONIC_BB,
+    tonicMidi: 58,
+    bpm: 85,
+    publishedMovableDo: TIMIAN_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "buneng-shuo-de-mimi",
+    title: "不能说的秘密",
+    artist: "周杰伦",
+    lyricCue: "冷咖啡离开了杯垫",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/6507272490e1087b5a0c2c2f",
+    publishedKey: "/key(G3)",
+    tonicName: "G",
+    tonicPc: TONIC_G,
+    tonicMidi: 55,
+    bpm: 72,
+    publishedMovableDo: BUNENG_SHUO_DE_MIMI_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "guyongzhe",
+    title: "孤勇者",
+    artist: "陈奕迅",
+    lyricCue: "都是勇敢的",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/6666bf5f1e85a6493d60e8b8",
+    publishedKey: "/key(B2)",
+    tonicName: "B",
+    tonicPc: TONIC_B,
+    tonicMidi: 47,
+    bpm: 130,
+    publishedMovableDo: GUYONGZHE_PUBLISHED,
+    cMajorFixed: GUYONGZHE_C,
+    liveAudio: null,
+  },
+  {
+    id: "xiaoqingge",
+    title: "小情歌",
+    artist: "苏打绿",
+    lyricCue: "这是一首简单的小情歌",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/25",
+    publishedKey: "/key(D4)",
+    tonicName: "D",
+    tonicPc: TONIC_D,
+    tonicMidi: 62,
+    bpm: 66,
+    publishedMovableDo: XIAOQINGGE_PUBLISHED,
     cMajorFixed: null,
     liveAudio: null,
   },
