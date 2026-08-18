@@ -1,7 +1,15 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { POP_PHRASE_FIXTURES, matchFirstPhrase } from "../src/lib/melody/pop-phrase-fixtures.ts";
+import {
+  ALIGN_SONGS,
+  SYNTH_ALIGN_BPM,
+  expectedDegrees,
+  matchFirstPhrase,
+  publishedToScore,
+  synthTonicMidi,
+} from "../src/lib/melody/pop-phrase-fixtures.ts";
+import { renderScoreSamples } from "../src/lib/melody/render-score.ts";
 import { cMajorDegrees, jianpuDegree } from "../src/lib/melody/leadsheet.ts";
 import {
   HIRUMAWARI_AUDIO_TONIC,
@@ -58,27 +66,23 @@ async function transcribeHirumawari(which) {
   return transcribeSamples(slice, sampleRate, HIRUMAWARI_AUDIO_TONIC, t0, HIRUMAWARI_PHRASE2_START, HIRUMAWARI_PHRASE2_END);
 }
 
+async function transcribeSynth(song) {
+  const tonic = synthTonicMidi(song.publishedMovableDo, song.tonicMidi);
+  const score = publishedToScore(song.publishedMovableDo, tonic);
+  const { samples, sampleRate } = renderScoreSamples(score, { bpm: SYNTH_ALIGN_BPM });
+  return transcribeSamples(samples, sampleRate, song.tonicPc);
+}
+
 export async function runAlignSet() {
   const rows = [];
-  for (const song of POP_PHRASE_FIXTURES) {
-    if (!song.liveAudio) {
-      rows.push({
-        id: song.id,
-        song: song.title,
-        expected: song.cMajorFixed.join(" "),
-        actual: "(no audio — fixture only)",
-        midis: [],
-        pass: true,
-        fixtureOnly: true,
-      });
-      continue;
-    }
-    const transcribed = await transcribeHirumawari(song.id);
+  for (const song of ALIGN_SONGS) {
+    const want = expectedDegrees(song);
+    const transcribed = song.liveAudio ? await transcribeHirumawari(song.id) : await transcribeSynth(song);
     if (transcribed.skip) {
       rows.push({
         id: song.id,
         song: song.title,
-        expected: song.cMajorFixed.join(" "),
+        expected: want.join(" "),
         actual: `(skipped: ${transcribed.skip})`,
         midis: [],
         pass: false,
@@ -86,17 +90,18 @@ export async function runAlignSet() {
       });
       continue;
     }
-    const got = transcribed.inC.slice(0, song.cMajorFixed.length);
-    const pass = matchFirstPhrase(transcribed.inC, song.cMajorFixed);
+    const got = transcribed.inC.slice(0, want.length);
+    const pass = matchFirstPhrase(transcribed.inC, want);
     rows.push({
       id: song.id,
       song: song.title,
-      expected: [...song.cMajorFixed].join(" "),
+      expected: want.join(" "),
       actual: got.join(" "),
-      extra: transcribed.inC.slice(song.cMajorFixed.length).join(" "),
-      gAudio: transcribed.inG.join(" "),
-      midis: transcribed.midis.slice(0, song.cMajorFixed.length),
+      extra: transcribed.inC.slice(want.length).join(" "),
+      published: song.publishedMovableDo.join(" "),
+      midis: transcribed.midis.slice(0, want.length),
       pass,
+      synth: !song.liveAudio,
     });
   }
   return rows;
@@ -106,7 +111,7 @@ export function formatAlignTable(rows) {
   const lines = [
     "song\texpected\tactual\tresult",
     ...rows.map((r) => {
-      const result = r.skip ? "skip" : r.fixtureOnly ? "fixture" : r.pass ? "pass" : "fail";
+      const result = r.skip ? "skip" : r.pass ? "pass" : "fail";
       return `${r.song}\t${r.expected}\t${r.actual}\t${result}`;
     }),
   ];
@@ -117,12 +122,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const rows = await runAlignSet();
   console.log(formatAlignTable(rows));
   for (const r of rows) {
-    console.log(`\n${r.song} ${r.skip ? "SKIP" : r.fixtureOnly ? "FIXTURE" : r.pass ? "PASS" : "FAIL"}`);
+    console.log(`\n${r.song} ${r.skip ? "SKIP" : r.pass ? "PASS" : "FAIL"}`);
     console.log(`  expected ${r.expected}`);
     console.log(`  actual   ${r.actual}`);
+    if (r.published) console.log(`  published ${r.published}`);
     if (r.midis?.length) console.log(`  midi     ${r.midis.join(" ")}`);
     if (r.extra) console.log(`  extra    ${r.extra}`);
   }
-  const live = rows.filter((r) => !r.fixtureOnly);
-  process.exit(live.every((r) => r.pass || r.skip) && live.some((r) => r.pass) ? 0 : 1);
+  process.exit(rows.every((r) => r.pass || r.skip) && rows.some((r) => r.pass) ? 0 : 1);
 }
