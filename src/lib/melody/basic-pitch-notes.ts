@@ -272,13 +272,35 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
     }
     const next = notes[i + 1];
     const beforeNewPitch = !next || next.pitchMidi !== cur.pitchMidi;
+    const span =
+      Math.max(prev.startTimeSeconds + prev.durationSeconds, cur.startTimeSeconds + cur.durationSeconds) -
+      prev.startTimeSeconds;
+    // 120 BPM quarter re-attack (~0.5s). Do not glue two published repeats.
+    const quarterReattack =
+      cur.pitchMidi === prev.pitchMidi &&
+      startDelta >= 0.42 &&
+      startDelta <= 0.62 &&
+      cur.durationSeconds >= 0.14 &&
+      prev.durationSeconds >= 0.14;
+    if (quarterReattack) {
+      prev.durationSeconds = Math.max(0.05, cur.startTimeSeconds - prev.startTimeSeconds);
+      out.push(cloneNote(cur));
+      continue;
+    }
+    if (cur.pitchMidi === prev.pitchMidi && isSyllableRun(notes, i)) {
+      out.push(cloneNote(cur));
+      continue;
+    }
+    // One triangle/BP note chopped into two onsets (combined span still one beat).
+    // Short syllable runs stay; only merge when the first piece is already a hold.
     if (
       cur.pitchMidi === prev.pitchMidi &&
-      prev.durationSeconds >= SHORT &&
-      cur.durationSeconds < SHORT &&
-      startDelta < 0.5 &&
-      gap < 0.25 &&
-      gap > -0.05
+      prev.durationSeconds >= 0.2 &&
+      gap < 0.05 &&
+      gap > -0.08 &&
+      span <= 0.52 &&
+      startDelta < 0.42 &&
+      startDelta > 0.12
     ) {
       const end = Math.max(
         prev.startTimeSeconds + prev.durationSeconds,
@@ -288,8 +310,20 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
       prev.amplitude = Math.max(prev.amplitude, cur.amplitude);
       continue;
     }
-    if (cur.pitchMidi === prev.pitchMidi && isSyllableRun(notes, i)) {
-      out.push(cloneNote(cur));
+    if (
+      cur.pitchMidi === prev.pitchMidi &&
+      prev.durationSeconds >= SHORT &&
+      cur.durationSeconds < SHORT &&
+      startDelta < 0.42 &&
+      gap < 0.25 &&
+      gap > -0.05
+    ) {
+      const end = Math.max(
+        prev.startTimeSeconds + prev.durationSeconds,
+        cur.startTimeSeconds + cur.durationSeconds,
+      );
+      prev.durationSeconds = end - prev.startTimeSeconds;
+      prev.amplitude = Math.max(prev.amplitude, cur.amplitude);
       continue;
     }
     if (cur.pitchMidi === prev.pitchMidi && startDelta > 0.3 && cur.durationSeconds >= 0.17) {
@@ -377,7 +411,10 @@ function dropNeighborReturns(notes: BasicPitchNote[]): BasicPitchNote[] {
       const older = out[out.length - 2]!;
       if (Math.round(n.pitchMidi) === Math.round(older.pitchMidi)) {
         const step = Math.abs(Math.round(n.pitchMidi) - Math.round(prev.pitchMidi));
-        if (step >= 1 && step <= 2 && n.durationSeconds >= 0.5 && n.durationSeconds > prev.durationSeconds) {
+        // Synth quarters are all ~0.4–0.5s; a real echo is much longer than Y.
+        const echo =
+          n.durationSeconds >= 0.5 && n.durationSeconds >= prev.durationSeconds + 0.16;
+        if (step >= 1 && step <= 2 && echo) {
           continue;
         }
       }

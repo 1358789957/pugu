@@ -200,6 +200,39 @@ test("pickMelodyNotes keeps X Y Y when the second Y is long", () => {
   );
 });
 
+test("pickMelodyNotes keeps 0.5s same-pitch quarters and merges a chopped hold", () => {
+  const quarters = [];
+  for (let i = 0; i < 5; i++) {
+    quarters.push(ev({ startTimeSeconds: 0.35 + i * 0.5, durationSeconds: 0.4, pitchMidi: 72, amplitude: 0.6 }));
+  }
+  assert.equal(pickMelodyNotes(quarters).length, 5);
+
+  const chopped = [
+    ev({ startTimeSeconds: 0.35, durationSeconds: 0.32, pitchMidi: 72, amplitude: 0.6 }),
+    ev({ startTimeSeconds: 0.69, durationSeconds: 0.16, pitchMidi: 72, amplitude: 0.45 }),
+    ev({ startTimeSeconds: 0.85, durationSeconds: 0.4, pitchMidi: 74, amplitude: 0.58 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(chopped).map((n) => n.pitchMidi),
+    [72, 74],
+  );
+});
+
+test("pickMelodyNotes keeps lyric X Y X when all three are quarter-length", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.35, durationSeconds: 0.52, pitchMidi: 70, amplitude: 0.6 }),
+    ev({ startTimeSeconds: 0.85, durationSeconds: 0.48, pitchMidi: 69, amplitude: 0.6 }),
+    ev({ startTimeSeconds: 1.35, durationSeconds: 0.52, pitchMidi: 70, amplitude: 0.6 }),
+    ev({ startTimeSeconds: 1.85, durationSeconds: 0.5, pitchMidi: 70, amplitude: 0.6 }),
+    ev({ startTimeSeconds: 2.35, durationSeconds: 0.48, pitchMidi: 69, amplitude: 0.6 }),
+    ev({ startTimeSeconds: 2.85, durationSeconds: 0.52, pitchMidi: 70, amplitude: 0.6 }),
+  ];
+  assert.deepEqual(
+    pickMelodyNotes(events).map((n) => n.pitchMidi),
+    [70, 69, 70, 70, 69, 70],
+  );
+});
+
 test("pickMelodyNotes drops a short passing tone and a long neighbor-tone return", () => {
   const events = [
     ev({ startTimeSeconds: 0.0, durationSeconds: 0.2, pitchMidi: 69, amplitude: 0.6 }),
