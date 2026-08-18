@@ -42,13 +42,71 @@ export function pickMelodyNotes(events: BasicPitchNote[]): BasicPitchNote[] {
       continue
     }
     const prev = picked[clash]!
+    if (n.pitchMidi === prev.pitchMidi) {
+      const startDelta = n.startTimeSeconds - prev.startTimeSeconds
+      // Short same-pitch blips in the gap between two quarters are not re-attacks.
+      if (startDelta > 0.12 && n.durationSeconds >= 0.18) {
+        prev.durationSeconds = Math.max(0.05, n.startTimeSeconds - prev.startTimeSeconds)
+        picked.push(n)
+      } else {
+        const end = Math.max(
+          prev.startTimeSeconds + prev.durationSeconds,
+          n.startTimeSeconds + n.durationSeconds,
+        )
+        prev.durationSeconds = end - prev.startTimeSeconds
+        prev.amplitude = Math.max(prev.amplitude, n.amplitude)
+      }
+      continue
+    }
+    const octaveRelated = Math.abs(n.pitchMidi - prev.pitchMidi) % 12 === 0
+    if (octaveRelated) {
+      if (melodyScore(n) > melodyScore(prev)) picked[clash] = n
+      continue
+    }
     if (n.amplitude > prev.amplitude * 1.08) {
       picked[clash] = n
     }
   }
 
   picked.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds)
-  return mergeAdjacent(picked)
+  return dropPitchGhosts(mergeAdjacent(picked))
+}
+
+/** Drop sub-180ms same-pitch blips that sit in the gap between two real notes. */
+function dropPitchGhosts(notes: BasicPitchNote[]): BasicPitchNote[] {
+  if (notes.length < 2) return notes
+  const out: BasicPitchNote[] = []
+  for (let i = 0; i < notes.length; i++) {
+    const n = { ...notes[i]! }
+    const prev = out[out.length - 1]
+    const next = notes[i + 1]
+    const short = n.durationSeconds < 0.18
+    const gapPrev = prev
+      ? n.startTimeSeconds - (prev.startTimeSeconds + prev.durationSeconds)
+      : Infinity
+    const gapNext = next
+      ? next.startTimeSeconds - (n.startTimeSeconds + n.durationSeconds)
+      : Infinity
+    const samePrev = Boolean(prev && prev.pitchMidi === n.pitchMidi && gapPrev < 0.14)
+    const sameNext = Boolean(next && next.pitchMidi === n.pitchMidi && gapNext < 0.14)
+    if (short && (samePrev || sameNext)) {
+      if (samePrev && prev) {
+        const end = Math.max(
+          prev.startTimeSeconds + prev.durationSeconds,
+          n.startTimeSeconds + n.durationSeconds,
+        )
+        prev.durationSeconds = end - prev.startTimeSeconds
+      }
+      continue
+    }
+    out.push(n)
+  }
+  return out
+}
+
+function melodyScore(n: BasicPitchNote): number {
+  const band = n.pitchMidi >= 55 && n.pitchMidi <= 79 ? 1.4 : 0.7
+  return n.amplitude * band
 }
 
 function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
@@ -58,7 +116,8 @@ function mergeAdjacent(notes: BasicPitchNote[]): BasicPitchNote[] {
     const cur = notes[i]!
     const prev = out[out.length - 1]!
     const gap = cur.startTimeSeconds - (prev.startTimeSeconds + prev.durationSeconds)
-    if (cur.pitchMidi === prev.pitchMidi && gap < 0.045 && gap > -0.02) {
+    const startDelta = cur.startTimeSeconds - prev.startTimeSeconds;
+    if (cur.pitchMidi === prev.pitchMidi && startDelta < 0.12 && gap < 0.012 && gap > -0.02) {
       const end = Math.max(
         prev.startTimeSeconds + prev.durationSeconds,
         cur.startTimeSeconds + cur.durationSeconds,

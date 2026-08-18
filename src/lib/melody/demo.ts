@@ -66,32 +66,24 @@ export async function renderDemoBuffer(): Promise<AudioBuffer> {
 
   let t = lead;
   for (const n of TWINKLE) {
-    const len = n.beats * beat;
+    const gap = 0.08;
+    const len = Math.max(0.09, n.beats * beat - gap);
     const osc = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "triangle";
-    osc2.type = "sine";
     const hz = midiToHz(n.midi);
     osc.frequency.value = hz;
-    osc2.frequency.value = hz * 2;
-    const g2 = ctx.createGain();
-    g2.gain.value = 0.18;
-    const peak = 0.28;
+    const peak = 0.32;
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(peak, t + 0.018);
-    gain.gain.exponentialRampToValueAtTime(peak * 0.55, t + Math.min(0.18, len * 0.4));
-    gain.gain.setValueAtTime(peak * 0.55, t + Math.max(0.05, len - 0.08));
-    gain.gain.exponentialRampToValueAtTime(0.0008, t + len - 0.01);
+    gain.gain.linearRampToValueAtTime(peak, t + 0.012);
+    gain.gain.exponentialRampToValueAtTime(peak * 0.6, t + Math.min(0.16, len * 0.35));
+    gain.gain.setValueAtTime(peak * 0.55, t + Math.max(0.05, len - 0.06));
+    gain.gain.exponentialRampToValueAtTime(0.0008, t + len - 0.008);
     osc.connect(gain);
-    osc2.connect(g2);
-    g2.connect(gain);
     gain.connect(ctx.destination);
     osc.start(t);
-    osc2.start(t);
     osc.stop(t + len);
-    osc2.stop(t + len);
-    t += len;
+    t += n.beats * beat;
   }
 
   return ctx.startRendering();

@@ -27,6 +27,42 @@ test("pickMelodyNotes keeps a monophonic vocal line", () => {
   );
 });
 
+test("pickMelodyNotes ignores a short same-pitch ghost between two notes", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.2, durationSeconds: 0.5, pitchMidi: 60, amplitude: 0.55 }),
+    ev({ startTimeSeconds: 0.72, durationSeconds: 0.14, pitchMidi: 60, amplitude: 0.3 }),
+    ev({ startTimeSeconds: 0.88, durationSeconds: 0.5, pitchMidi: 60, amplitude: 0.52 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.equal(picked.length, 2);
+  assert.equal(picked[0].startTimeSeconds, 0.2);
+  assert.ok(picked[0].durationSeconds <= 0.7);
+  assert.equal(picked[1].startTimeSeconds, 0.88);
+});
+
+test("pickMelodyNotes keeps same-pitch re-attacks", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.2, durationSeconds: 0.7, pitchMidi: 60, amplitude: 0.55 }),
+    ev({ startTimeSeconds: 0.82, durationSeconds: 0.5, pitchMidi: 60, amplitude: 0.52 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.equal(picked.length, 2);
+  assert.ok(picked[0].durationSeconds <= 0.65);
+  assert.equal(picked[1].startTimeSeconds, 0.82);
+});
+
+test("pickMelodyNotes drops an overlapping octave double", () => {
+  const events = [
+    ev({ startTimeSeconds: 1.0, durationSeconds: 0.5, pitchMidi: 60, amplitude: 0.45 }),
+    ev({ startTimeSeconds: 1.02, durationSeconds: 0.48, pitchMidi: 72, amplitude: 0.4 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.deepEqual(
+    picked.map((n) => n.pitchMidi),
+    [60],
+  );
+});
+
 test("pickMelodyNotes drops overlapping accompaniment", () => {
   const events = [
     ev({ startTimeSeconds: 1.0, durationSeconds: 0.8, pitchMidi: 72, amplitude: 0.7 }),

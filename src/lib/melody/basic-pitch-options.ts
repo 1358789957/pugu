@@ -1,8 +1,8 @@
 export const BASIC_PITCH_RATE = 22050;
 
-/** Vocal-ish defaults: a bit stricter than the library's 0.5/0.3 defaults. */
+/** Vocal-ish defaults. Onset is a bit more sensitive than the library's 0.5 so repeated notes speak. */
 export const BASIC_PITCH_OPTS = {
-  onsetThresh: 0.4,
+  onsetThresh: 0.32,
   frameThresh: 0.3,
   minNoteLen: 7,
   inferOnsets: true,
