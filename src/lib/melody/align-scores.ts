@@ -39,14 +39,14 @@ export const ODE_TO_JOY_SCORE: ScoreNote[] = [
 ];
 
 export const HAPPY_BIRTHDAY_SCORE: ScoreNote[] = [
-  { midi: 67, beats: 0.5 },
-  { midi: 67, beats: 0.5 },
+  { midi: 67, beats: 1 },
+  { midi: 67, beats: 1 },
   { midi: 69, beats: 1 },
   { midi: 67, beats: 1 },
   { midi: 72, beats: 1 },
   { midi: 71, beats: 2 },
-  { midi: 67, beats: 0.5 },
-  { midi: 67, beats: 0.5 },
+  { midi: 67, beats: 1 },
+  { midi: 67, beats: 1 },
   { midi: 69, beats: 1 },
   { midi: 67, beats: 1 },
   { midi: 74, beats: 1 },

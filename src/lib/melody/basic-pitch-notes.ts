@@ -331,28 +331,13 @@ function dropFlourishRehits(notes: BasicPitchNote[]): BasicPitchNote[] {
   return out;
 }
 
-/** Drop X Y X when Y is a neighbor and the second X is a long return. */
+/** Drop the long return X in X Y X when Y is a neighbor. Keep X Y Y. */
 function dropNeighborReturns(notes: BasicPitchNote[]): BasicPitchNote[] {
   if (notes.length < 3) return notes;
   const out: BasicPitchNote[] = [];
   for (let i = 0; i < notes.length; i++) {
     const n = notes[i]!;
     const prev = out[out.length - 1];
-    const next = notes[i + 1];
-    if (prev && next && Math.round(n.pitchMidi) === Math.round(next.pitchMidi)) {
-      const step = Math.abs(Math.round(n.pitchMidi) - Math.round(prev.pitchMidi));
-      const back = Math.abs(Math.round(next.pitchMidi) - Math.round(prev.pitchMidi));
-      if (
-        step >= 1 &&
-        step <= 2 &&
-        back >= 1 &&
-        back <= 2 &&
-        next.durationSeconds >= 0.5 &&
-        next.durationSeconds > n.durationSeconds
-      ) {
-        continue;
-      }
-    }
     if (prev && out.length >= 2) {
       const older = out[out.length - 2]!;
       if (Math.round(n.pitchMidi) === Math.round(older.pitchMidi)) {

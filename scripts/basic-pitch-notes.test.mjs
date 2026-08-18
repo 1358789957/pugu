@@ -134,6 +134,19 @@ test("pickMelodyNotes drops a late same-pitch trail before a third cadence", () 
   );
 });
 
+test("pickMelodyNotes keeps X Y Y (欢乐颂 3 2 2) when the second Y is long", () => {
+  const events = [
+    ev({ startTimeSeconds: 7.85, durationSeconds: 0.55, pitchMidi: 64, amplitude: 0.8 }),
+    ev({ startTimeSeconds: 8.48, durationSeconds: 0.46, pitchMidi: 62, amplitude: 0.81 }),
+    ev({ startTimeSeconds: 9.1, durationSeconds: 0.57, pitchMidi: 62, amplitude: 0.87 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.deepEqual(
+    picked.map((n) => n.pitchMidi),
+    [64, 62, 62],
+  );
+});
+
 test("pickMelodyNotes drops a short passing tone and a long neighbor-tone return", () => {
   const events = [
     ev({ startTimeSeconds: 0.0, durationSeconds: 0.2, pitchMidi: 69, amplitude: 0.6 }),
