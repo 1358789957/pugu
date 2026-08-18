@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { pickMelodyNotes, toPuguNotes } from "../src/lib/melody/basic-pitch-notes.ts";
+import {
+  dropSqueezedGhosts,
+  pickMelodyNotes,
+  polishMelody,
+  polishMelodyTight,
+  toPuguNotes,
+} from "../src/lib/melody/basic-pitch-notes.ts";
 import { detectBpmFromNotes } from "../src/lib/melody/analyze.ts";
 
 function ev(partial) {
@@ -55,6 +61,53 @@ test("pickMelodyNotes drops a short same-pitch stutter before the next degree", 
       [2.497, 71],
       [3.066, 72],
     ],
+  );
+});
+
+test("dropSqueezedGhosts drops a short interior ornament and keeps a rest island", () => {
+  const squeezed = dropSqueezedGhosts([
+    ev({ startTimeSeconds: 13.56, durationSeconds: 0.3, pitchMidi: 71 }),
+    ev({ startTimeSeconds: 13.9, durationSeconds: 0.08, pitchMidi: 74 }),
+    ev({ startTimeSeconds: 13.99, durationSeconds: 0.27, pitchMidi: 64 }),
+  ]);
+  assert.deepEqual(
+    squeezed.map((n) => n.pitchMidi),
+    [71, 64],
+  );
+  const island = dropSqueezedGhosts([
+    ev({ startTimeSeconds: 8.75, durationSeconds: 0.13, pitchMidi: 66 }),
+    ev({ startTimeSeconds: 9.51, durationSeconds: 0.08, pitchMidi: 62 }),
+    ev({ startTimeSeconds: 9.93, durationSeconds: 0.08, pitchMidi: 67 }),
+  ]);
+  assert.deepEqual(
+    island.map((n) => n.pitchMidi),
+    [66, 62, 67],
+  );
+  const run = dropSqueezedGhosts([
+    ev({ startTimeSeconds: 7.84, durationSeconds: 0.17, pitchMidi: 66 }),
+    ev({ startTimeSeconds: 8.04, durationSeconds: 0.09, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 8.13, durationSeconds: 0.14, pitchMidi: 67 }),
+  ]);
+  assert.deepEqual(
+    run.map((n) => n.pitchMidi),
+    [66, 67, 67],
+  );
+});
+
+test("polishMelodyTight does not eat the 第二句 5 1 hole", () => {
+  const hole = [
+    ev({ startTimeSeconds: 8.75, durationSeconds: 0.13, pitchMidi: 66 }),
+    ev({ startTimeSeconds: 9.51, durationSeconds: 0.08, pitchMidi: 62 }),
+    ev({ startTimeSeconds: 9.93, durationSeconds: 0.08, pitchMidi: 67 }),
+    ev({ startTimeSeconds: 10.02, durationSeconds: 0.14, pitchMidi: 69 }),
+  ];
+  assert.deepEqual(
+    polishMelody(hole).map((n) => n.pitchMidi),
+    [66, 62, 67, 69],
+  );
+  assert.deepEqual(
+    polishMelodyTight(hole).map((n) => n.pitchMidi),
+    [66, 62, 67, 69],
   );
 });
 

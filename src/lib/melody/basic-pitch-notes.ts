@@ -96,8 +96,43 @@ export function polishMelody(notes: BasicPitchNote[]): BasicPitchNote[] {
   );
 }
 
+/** After contour merge: drop squeezed ornaments. Isolated rest islands stay. */
+export function polishMelodyTight(notes: BasicPitchNote[]): BasicPitchNote[] {
+  return dropSqueezedGhosts(polishMelody(notes));
+}
+
 function cloneNote(n: BasicPitchNote): BasicPitchNote {
   return { ...n, pitchBends: n.pitchBends ? n.pitchBends.slice() : undefined };
+}
+
+/**
+ * Drop a short interior ornament squeezed between two longer notes.
+ * Isolated short syllables in a rest (昼回 第二句 `5` ~0.08s) stay.
+ */
+export function dropSqueezedGhosts(notes: BasicPitchNote[]): BasicPitchNote[] {
+  if (notes.length < 3) return notes;
+  const GHOST = 0.125;
+  const GAP = 0.22;
+  const out: BasicPitchNote[] = [];
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i]!;
+    const prev = out[out.length - 1];
+    const next = notes[i + 1];
+    if (prev && next && n.durationSeconds <= GHOST) {
+      const gapPrev = n.startTimeSeconds - (prev.startTimeSeconds + prev.durationSeconds);
+      const gapNext = next.startTimeSeconds - (n.startTimeSeconds + n.durationSeconds);
+      const squeezed = gapPrev < GAP && gapNext < GAP && gapPrev > -0.06 && gapNext > -0.06;
+      const shorter =
+        n.durationSeconds < prev.durationSeconds - 0.02 &&
+        n.durationSeconds < next.durationSeconds - 0.02;
+      const midi = Math.round(n.pitchMidi);
+      const ornament =
+        midi !== Math.round(prev.pitchMidi) && midi !== Math.round(next.pitchMidi);
+      if (squeezed && shorter && ornament) continue;
+    }
+    out.push(cloneNote(n));
+  }
+  return out;
 }
 
 /**

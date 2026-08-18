@@ -6,6 +6,7 @@ import {
   mergeContourIntoNotes,
   notesFromFilledContour,
   periodRatio,
+  tightenContourNotes,
 } from "../src/lib/melody/pitch-contour.ts";
 import { fillMelodyGaps } from "../src/lib/melody/refine-melody.ts";
 
@@ -104,6 +105,40 @@ test("continueWavelength grows a short D4 island into nearby unvoiced frames", (
   assert.ok(grown.length >= 5);
   assert.ok(grown.every((f) => Math.round(f.midi) === 62));
   assert.ok(grown.some((f) => f.filled));
+});
+
+test("notesFromFilledContour ignores a 1-frame pitch spike", () => {
+  const raw = [];
+  for (let t = 0; t <= 0.16; t += 0.01) {
+    const hz = Math.abs(t - 0.07) < 0.005 ? G4 : FS4;
+    raw.push(frame(t, hz));
+  }
+  const notes = notesFromFilledContour(raw);
+  assert.deepEqual(
+    notes.map((n) => n.pitchMidi),
+    [66],
+  );
+});
+
+test("tightenContourNotes drops a squeezed ghost and keeps an isolated island", () => {
+  const squeezed = tightenContourNotes([
+    { startTimeSeconds: 1.0, durationSeconds: 0.3, pitchMidi: 71, amplitude: 0.5 },
+    { startTimeSeconds: 1.32, durationSeconds: 0.07, pitchMidi: 74, amplitude: 0.3 },
+    { startTimeSeconds: 1.4, durationSeconds: 0.25, pitchMidi: 64, amplitude: 0.5 },
+  ]);
+  assert.deepEqual(
+    squeezed.map((n) => n.pitchMidi),
+    [71, 64],
+  );
+  const island = tightenContourNotes([
+    { startTimeSeconds: 0.0, durationSeconds: 0.15, pitchMidi: 66, amplitude: 0.5 },
+    { startTimeSeconds: 0.7, durationSeconds: 0.08, pitchMidi: 62, amplitude: 0.4 },
+    { startTimeSeconds: 1.2, durationSeconds: 0.15, pitchMidi: 67, amplitude: 0.5 },
+  ]);
+  assert.deepEqual(
+    island.map((n) => n.pitchMidi),
+    [66, 62, 67],
+  );
 });
 
 test("notesFromFilledContour segments stable degree runs from period", () => {

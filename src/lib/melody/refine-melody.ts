@@ -1,6 +1,6 @@
 import type { BasicPitchNote } from "./basic-pitch-options";
 import { BASIC_PITCH_RATE } from "./basic-pitch-options";
-import { polishMelody } from "./basic-pitch-notes";
+import { polishMelodyTight } from "./basic-pitch-notes";
 import {
   buildPitchContour,
   continueWavelength,
@@ -58,7 +58,7 @@ export function refineMelodyDetail(
   const filledContour = continueWavelength(rawContour, sampleRate);
   const merged = mergeContourIntoNotes(notes, filledContour);
   return {
-    notes: polishMelody(merged),
+    notes: polishMelodyTight(merged),
     rawContour,
     filledContour,
     rawPitchTrack: contourToPitchFrames(rawContour),

@@ -22,6 +22,8 @@ import {
   HIRUMAWARI_PHRASE2_START,
   HIRUMAWARI_PHRASE_END,
   HIRUMAWARI_PHRASE_START,
+  HIRUMAWARI_VERSE_DECODE_END,
+  HIRUMAWARI_VERSE_DECODE_START,
   HIRUMAWARI_VERSE_HYPOTHESES,
 } from "../src/lib/melody/hirumawari-opening.ts";
 import { pickMelodyNotes, toPuguNotes } from "../src/lib/melody/basic-pitch-notes.ts";
@@ -34,6 +36,7 @@ const VOCAL_WAV = join(root, "examples/hirumawari/昼回のメモリー-人声.w
 
 function degreesOf(notes, fromTonic) {
   return {
+    notes,
     midis: notes.map((n) => n.midi),
     inC: cMajorDegrees(
       notes.map((n) => n.midi),
@@ -185,30 +188,30 @@ export function formatAccuracyReport(rows) {
 
 export async function runUngradedHirumawari() {
   if (!existsSync(VOCAL_WAV)) return [];
-  const rows = [];
-  for (const h of HIRUMAWARI_VERSE_HYPOTHESES) {
-    const { samples, sampleRate } = readWavMono16(VOCAL_WAV);
-    const slice = sliceSeconds(samples, sampleRate, h.decodeStart, h.decodeEnd);
-    const got = await transcribeSamples(
-      slice,
-      sampleRate,
-      HIRUMAWARI_AUDIO_TONIC,
-      h.decodeStart,
-      h.start,
-      h.end,
-    );
-    rows.push({
+  const { samples, sampleRate } = readWavMono16(VOCAL_WAV);
+  const slice = sliceSeconds(samples, sampleRate, HIRUMAWARI_VERSE_DECODE_START, HIRUMAWARI_VERSE_DECODE_END);
+  const verse = await transcribeSamples(
+    slice,
+    sampleRate,
+    HIRUMAWARI_AUDIO_TONIC,
+    HIRUMAWARI_VERSE_DECODE_START,
+    HIRUMAWARI_VERSE_DECODE_START,
+    HIRUMAWARI_CHORUS_START_HYPOTHESIS,
+  );
+  return HIRUMAWARI_VERSE_HYPOTHESES.map((h) => {
+    const notes = (verse.notes ?? []).filter((n) => n.start >= h.start && n.start < h.end);
+    const midis = notes.map((n) => n.midi);
+    return {
       id: h.id,
       label: h.label,
       start: h.start,
       end: h.end,
       lyricCue: h.lyricCue,
-      decoded: got.inC.join(" "),
+      decoded: cMajorDegrees(midis, HIRUMAWARI_AUDIO_TONIC).join(" "),
       snapshot: h.cMajorFixed.join(" "),
-      midis: got.midis.join(" "),
-    });
-  }
-  return rows;
+      midis: midis.join(" "),
+    };
+  });
 }
 
 export function formatUngradedHypotheses(rows) {

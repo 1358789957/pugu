@@ -212,17 +212,92 @@ export function notesFromFilledContour(frames: ContourFrame[]): BasicPitchNote[]
     });
     run = [];
   };
-  for (const f of frames) {
-    if (f.hz <= 0 || (!f.voiced && !f.filled)) {
+  const active = (f: ContourFrame) => f.hz > 0 && (f.voiced || f.filled);
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i]!;
+    if (!active(f)) {
       flush();
       continue;
     }
     const prev = run[run.length - 1];
-    if (prev && Math.abs(f.midi - prev.midi) >= 0.75) flush();
+    if (prev && Math.abs(f.midi - prev.midi) >= 0.9) {
+      let stable = 1;
+      for (let k = i + 1; k < frames.length && k <= i + 2; k++) {
+        const n = frames[k]!;
+        if (!active(n)) break;
+        if (Math.abs(n.midi - f.midi) < 0.9) stable += 1;
+        else break;
+      }
+      if (stable < 3) continue;
+      flush();
+    }
     run.push(f);
   }
   flush();
-  return notes;
+  return tightenContourNotes(notes);
+}
+
+/**
+ * Keep syllable-length contour notes; drop 1–2-frame spikes and squeezed ghosts.
+ * Isolated short islands in a rest stay (they can be the missing `5`).
+ */
+export function tightenContourNotes(notes: BasicPitchNote[]): BasicPitchNote[] {
+  if (notes.length === 0) return notes;
+  const merged: BasicPitchNote[] = [];
+  for (const raw of notes) {
+    const n = { ...raw, pitchBends: raw.pitchBends ? raw.pitchBends.slice() : undefined };
+    const prev = merged[merged.length - 1];
+    const samePc = prev && (((Math.round(n.pitchMidi) - Math.round(prev.pitchMidi)) % 12) + 12) % 12 === 0;
+    const gap = prev
+      ? n.startTimeSeconds - (prev.startTimeSeconds + prev.durationSeconds)
+      : Infinity;
+    if (prev && samePc && gap < 0.08 && gap > -0.05) {
+      const prefer =
+        n.pitchMidi >= SING_LO && n.pitchMidi <= SING_HI
+          ? n.pitchMidi
+          : prev.pitchMidi >= SING_LO && prev.pitchMidi <= SING_HI
+            ? prev.pitchMidi
+            : n.pitchMidi;
+      prev.pitchMidi = prefer;
+      prev.durationSeconds =
+        Math.max(prev.startTimeSeconds + prev.durationSeconds, n.startTimeSeconds + n.durationSeconds) -
+        prev.startTimeSeconds;
+      prev.amplitude = Math.max(prev.amplitude, n.amplitude);
+      continue;
+    }
+    merged.push(n);
+  }
+  if (merged.length < 3) return merged;
+  const out: BasicPitchNote[] = [];
+  for (let i = 0; i < merged.length; i++) {
+    const n = merged[i]!;
+    const prev = out[out.length - 1];
+    const next = merged[i + 1];
+    if (prev && next && n.durationSeconds <= 0.1) {
+      const gapPrev = n.startTimeSeconds - (prev.startTimeSeconds + prev.durationSeconds);
+      const gapNext = next.startTimeSeconds - (n.startTimeSeconds + n.durationSeconds);
+      const midi = Math.round(n.pitchMidi);
+      const ornament =
+        midi !== Math.round(prev.pitchMidi) && midi !== Math.round(next.pitchMidi);
+      const neighborsInBand =
+        prev.pitchMidi >= SING_LO &&
+        prev.pitchMidi <= SING_HI &&
+        next.pitchMidi >= SING_LO &&
+        next.pitchMidi <= SING_HI;
+      if (
+        ornament &&
+        neighborsInBand &&
+        gapPrev < 0.16 &&
+        gapNext < 0.16 &&
+        n.durationSeconds < prev.durationSeconds &&
+        n.durationSeconds < next.durationSeconds
+      ) {
+        continue;
+      }
+    }
+    out.push({ ...n });
+  }
+  return out;
 }
 
 function pitchClass(midi: number): number {
