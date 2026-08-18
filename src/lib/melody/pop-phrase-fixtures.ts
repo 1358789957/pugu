@@ -1,6 +1,7 @@
 /**
  * Pop first-line 简谱 fixtures. Phrase + published key + source URL + lyric cue.
- * No copyrighted audio, no full scores, no nursery-rhyme rulers.
+ * No copyrighted audio, no nursery-rhyme rulers.
+ * First-line 首调 stays here; full / verse+chorus sequences live in pop-full-fixtures.
  *
  * Source of truth is the published 首调 string plus the site `/key(...)`.
  * C=1 固定调 is only stored when already locked (昼回) or derived
@@ -9,7 +10,7 @@
  */
 import type { ScoreNote } from "./demo";
 import { HIRUMAWARI_OPENING_C, HIRUMAWARI_PHRASE2_C } from "./hirumawari-opening";
-import { jianpuDegree } from "./leadsheet";
+import { cMajorDegrees, jianpuDegree } from "./leadsheet";
 
 const MAJOR_SEMITONES = [0, 2, 4, 5, 7, 9, 11] as const;
 
@@ -30,6 +31,14 @@ export function movableMajorToCFixed(published: readonly string[], tonicPc: numb
   });
 }
 
+/** `#` +1, `b` −1, `n` cancels. Octave marks are not accidentals. */
+export function accidentalSemitones(token: string): number {
+  if (token.includes("n")) return 0;
+  if (token.includes("#")) return 1;
+  if (token.includes("b")) return -1;
+  return 0;
+}
+
 export function publishedToScore(
   published: readonly string[],
   tonicMidi: number,
@@ -40,7 +49,10 @@ export function publishedToScore(
     const down = (token.match(/,/g) ?? []).length;
     const up = (token.match(/'/g) ?? []).length;
     const step = MAJOR_SEMITONES[deg - 1] ?? 0;
-    return { midi: tonicMidi + step + (up - down) * 12, beats: beats?.[i] ?? 1 };
+    return {
+      midi: tonicMidi + step + accidentalSemitones(token) + (up - down) * 12,
+      beats: beats?.[i] ?? 1,
+    };
   });
 }
 
@@ -345,6 +357,17 @@ export function expectedDegrees(song: PopPhraseFixture): string[] {
   return stripOctaveMarks(song.publishedMovableDo);
 }
 
+/** 首调 degrees after the same tonic-lift + vocal-band clamp the triangle synth uses. */
+export function expectedSynthDegrees(
+  published: readonly string[],
+  tonicMidi: number,
+  tonicPc: number,
+): string[] {
+  const tonic = synthTonicMidi(published, tonicMidi);
+  const midis = publishedToScore(published, tonic).map((n) => clampToMelodyBand(n.midi));
+  return cMajorDegrees(midis, tonicPc);
+}
+
 export function matchFirstPhrase(actual: readonly string[], want: readonly string[]): boolean {
   if (actual.length < want.length) return false;
   return want.every((d, i) => actual[i] === d);
@@ -365,7 +388,58 @@ export type PhraseScore = {
   exact: boolean;
 };
 
-/** Note-level score used by the align accuracy report. */
+export type AlignmentScore = {
+  matched: number;
+  expectedLen: number;
+  actualLen: number;
+  /** LCS(actual, expected) / expectedLen */
+  accuracy: number;
+  extra: number;
+  missing: number;
+  exact: boolean;
+  prefix: number;
+};
+
+/** Longest common subsequence length (note tokens). */
+export function lcsLength(actual: readonly string[], expected: readonly string[]): number {
+  const m = actual.length;
+  const n = expected.length;
+  const prev = new Uint16Array(n + 1);
+  const cur = new Uint16Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    const a = actual[i - 1];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = a === expected[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    }
+    prev.set(cur);
+  }
+  return prev[n];
+}
+
+/**
+ * Sequence alignment used by the full-song pop report.
+ * n_matched = LCS length; extra / missing are notes outside that common spine.
+ */
+export function scoreAlignment(actual: readonly string[], expected: readonly string[]): AlignmentScore {
+  const expectedLen = expected.length;
+  const actualLen = actual.length;
+  const matched = lcsLength(actual, expected);
+  let prefix = 0;
+  const lim = Math.min(actualLen, expectedLen);
+  while (prefix < lim && actual[prefix] === expected[prefix]) prefix++;
+  return {
+    matched,
+    expectedLen,
+    actualLen,
+    accuracy: expectedLen === 0 ? 1 : matched / expectedLen,
+    extra: actualLen - matched,
+    missing: expectedLen - matched,
+    exact: matched === expectedLen && actualLen === expectedLen,
+    prefix,
+  };
+}
+
+/** Note-level score used by the first-line align accuracy report. */
 export function scorePhrase(actual: readonly string[], expected: readonly string[]): PhraseScore {
   let prefix = 0;
   const n = Math.min(actual.length, expected.length);

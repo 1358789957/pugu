@@ -17,6 +17,7 @@
     "test": "node --experimental-strip-types --import ./scripts/ts-resolve.mjs --test 'scripts/**/*.test.mjs'",
     "align": "node --experimental-strip-types --import ./scripts/ts-resolve.mjs scripts/align-scores.mjs",
     "align:report": "node --experimental-strip-types --import ./scripts/ts-resolve.mjs scripts/align-scores.mjs --report",
+    "align:full": "node --experimental-strip-types --import ./scripts/ts-resolve.mjs scripts/align-full-pop.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
