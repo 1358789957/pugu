@@ -14,6 +14,9 @@ import {
   HIRUMAWARI_PHRASE2_START,
   HIRUMAWARI_PHRASE_END,
   HIRUMAWARI_PHRASE_START,
+  HIRUMAWARI_CHORUS_LYRIC,
+  HIRUMAWARI_CHORUS_START_HYPOTHESIS,
+  HIRUMAWARI_VERSE_HYPOTHESES,
 } from "../src/lib/melody/hirumawari-opening.ts";
 import { pickMelodyNotes, toPuguNotes } from "../src/lib/melody/basic-pitch-notes.ts";
 import { refineMelody } from "../src/lib/melody/refine-melody.ts";
@@ -113,4 +116,21 @@ test("hirumawari dry-vocal 第二句, transposed to C, is 6711111751213", async 
     [...HIRUMAWARI_PHRASE2_C],
     `C-major 固定调 第二句\n  got  ${secondC.join(" ")}\n  want ${HIRUMAWARI_PHRASE2_C.join(" ")}\n  G-audio ${second.inG.join(" ")}`,
   );
+});
+
+test("phrase 3–5 hypotheses sit after 第二句 and before the chorus lyric", () => {
+  assert.equal(HIRUMAWARI_CHORUS_LYRIC, "いつかまた同じ雨に");
+  assert.equal(HIRUMAWARI_VERSE_HYPOTHESES.length, 3);
+  assert.deepEqual(
+    HIRUMAWARI_VERSE_HYPOTHESES.map((h) => h.lyricCue),
+    ["並んでた言えない", "まま解けてく言葉", "手と手の間触れる距離"],
+  );
+  let prev = HIRUMAWARI_PHRASE2_END;
+  for (const h of HIRUMAWARI_VERSE_HYPOTHESES) {
+    assert.ok(h.start >= prev - 0.15, `${h.id} must start after 第二句`);
+    assert.ok(h.end <= HIRUMAWARI_CHORUS_START_HYPOTHESIS, `${h.id} must end before chorus`);
+    assert.equal(h.cMajorFixed.length, h.concertMidi.length);
+    prev = h.start;
+  }
+  assert.ok(!HIRUMAWARI_VERSE_HYPOTHESES.some((h) => h.lyricCue.includes(HIRUMAWARI_CHORUS_LYRIC)));
 });
