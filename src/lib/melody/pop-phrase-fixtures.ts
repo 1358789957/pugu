@@ -13,7 +13,8 @@ import { jianpuDegree } from "./leadsheet";
 
 const MAJOR_SEMITONES = [0, 2, 4, 5, 7, 9, 11] as const;
 
-export const SYNTH_ALIGN_BPM = 100;
+/** Quarters must stay under the 0.5s neighbor-return cut and the 0.62s late-echo cut. */
+export const SYNTH_ALIGN_BPM = 120;
 
 export function stripOctaveMarks(tokens: readonly string[]): string[] {
   return tokens.map((t) => t.replace(/[,']/g, ""));

@@ -69,7 +69,7 @@ async function transcribeHirumawari(which) {
 async function transcribeSynth(song) {
   const tonic = synthTonicMidi(song.publishedMovableDo, song.tonicMidi);
   const score = publishedToScore(song.publishedMovableDo, tonic);
-  const { samples, sampleRate } = renderScoreSamples(score, { bpm: SYNTH_ALIGN_BPM });
+  const { samples, sampleRate } = renderScoreSamples(score, { bpm: SYNTH_ALIGN_BPM, gap: 0.1 });
   return transcribeSamples(samples, sampleRate, song.tonicPc);
 }
 
