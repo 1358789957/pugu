@@ -9,7 +9,19 @@ export const BASIC_PITCH_OPTS = {
   minFreq: 196,
   maxFreq: 880,
   melodiaTrick: true,
+  energyTolerance: 11,
 } as const;
+
+export type BasicPitchDecodeOpts = {
+  onsetThresh: number;
+  frameThresh: number;
+  minNoteLen: number;
+  inferOnsets: boolean;
+  minFreq: number;
+  maxFreq: number;
+  melodiaTrick: boolean;
+  energyTolerance: number;
+};
 
 export type BasicPitchNote = {
   startTimeSeconds: number;

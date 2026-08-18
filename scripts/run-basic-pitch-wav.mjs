@@ -2,13 +2,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as tf from "@tensorflow/tfjs";
-import {
-  BasicPitch,
-  addPitchBendsToNoteEvents,
-  noteFramesToTime,
-  outputToNotesPoly,
-} from "@spotify/basic-pitch";
+import { BasicPitch } from "@spotify/basic-pitch";
 import { BASIC_PITCH_OPTS } from "../src/lib/melody/basic-pitch-options.ts";
+import { notesFromActivations } from "../src/lib/melody/basic-pitch-decode.ts";
 import { pickMelodyNotes } from "../src/lib/melody/basic-pitch-notes.ts";
 import { midiToJianpu } from "../src/lib/melody/leadsheet.ts";
 import { readWavMono16, sliceSeconds } from "./wav-pcm.mjs";
@@ -42,7 +38,7 @@ class FileIOHandler {
   }
 }
 
-export async function transcribeWavSamples(samples, opts = BASIC_PITCH_OPTS) {
+export async function transcribeWavSamples(samples, _opts = BASIC_PITCH_OPTS) {
   await tf.setBackend("cpu");
   await tf.ready();
   const modelDir = join(root, "public/basic-pitch");
@@ -60,22 +56,7 @@ export async function transcribeWavSamples(samples, opts = BASIC_PITCH_OPTS) {
     },
     () => {},
   );
-  const raw = noteFramesToTime(
-    addPitchBendsToNoteEvents(
-      contours,
-      outputToNotesPoly(
-        frames,
-        onsets,
-        opts.onsetThresh,
-        opts.frameThresh,
-        opts.minNoteLen,
-        opts.inferOnsets,
-        opts.maxFreq,
-        opts.minFreq,
-        opts.melodiaTrick,
-      ),
-    ),
-  );
+  const raw = notesFromActivations(frames, onsets, contours);
   const melody = pickMelodyNotes(raw);
   return { raw, melody };
 }

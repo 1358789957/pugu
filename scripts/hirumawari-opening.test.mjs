@@ -16,6 +16,7 @@ import {
   HIRUMAWARI_PHRASE_START,
 } from "../src/lib/melody/hirumawari-opening.ts";
 import { pickMelodyNotes, toPuguNotes } from "../src/lib/melody/basic-pitch-notes.ts";
+import { refineMelody } from "../src/lib/melody/refine-melody.ts";
 import { readWavMono16, sliceSeconds } from "./wav-pcm.mjs";
 import { transcribeWavSamples } from "./run-basic-pitch-wav.mjs";
 
@@ -69,8 +70,10 @@ test("固定调: C-major 第一句 / 第二句 are not G-audio numbering", () =>
 
 async function transcribePhrase(t0, t1, f0, f1) {
   const { samples, sampleRate } = readWavMono16(VOCAL_WAV);
-  const { raw } = await transcribeWavSamples(sliceSeconds(samples, sampleRate, t0, t1));
-  const notes = toPuguNotes(pickMelodyNotes(raw)).map((n) => ({ ...n, start: n.start + t0 }));
+  const slice = sliceSeconds(samples, sampleRate, t0, t1);
+  const { raw } = await transcribeWavSamples(slice);
+  const refined = refineMelody(pickMelodyNotes(raw), slice, sampleRate, 0);
+  const notes = toPuguNotes(refined).map((n) => ({ ...n, start: n.start + t0 }));
   return phraseInC(notes, f0, f1);
 }
 

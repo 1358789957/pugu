@@ -2,6 +2,7 @@ import type { NoteEvent } from "./notes";
 import type { BasicPitchNote } from "./basic-pitch-options";
 import { BASIC_PITCH_RATE } from "./basic-pitch-options";
 import { pickMelodyNotes, toPuguNotes } from "./basic-pitch-notes";
+import { refineMelody } from "./refine-melody";
 
 export { pickMelodyNotes, toPuguNotes };
 
@@ -68,13 +69,8 @@ async function runOnMain(
   onProgress?: (pct: number) => void,
 ): Promise<BasicPitchNote[]> {
   const tf = await import("@tensorflow/tfjs");
-  const {
-    BasicPitch,
-    addPitchBendsToNoteEvents,
-    noteFramesToTime,
-    outputToNotesPoly,
-  } = await import("@spotify/basic-pitch");
-  const { BASIC_PITCH_OPTS } = await import("./basic-pitch-options");
+  const { BasicPitch } = await import("@spotify/basic-pitch");
+  const { notesFromActivations } = await import("./basic-pitch-decode");
   try {
     await tf.setBackend("webgl");
   } catch {
@@ -94,22 +90,7 @@ async function runOnMain(
     },
     (pct) => onProgress?.(pct),
   );
-  return noteFramesToTime(
-    addPitchBendsToNoteEvents(
-      contours,
-      outputToNotesPoly(
-        frames,
-        onsets,
-        BASIC_PITCH_OPTS.onsetThresh,
-        BASIC_PITCH_OPTS.frameThresh,
-        BASIC_PITCH_OPTS.minNoteLen,
-        BASIC_PITCH_OPTS.inferOnsets,
-        BASIC_PITCH_OPTS.maxFreq,
-        BASIC_PITCH_OPTS.minFreq,
-        BASIC_PITCH_OPTS.melodiaTrick,
-      ),
-    ),
-  );
+  return notesFromActivations(frames, onsets, contours);
 }
 
 export async function transcribeMelody(
@@ -123,5 +104,5 @@ export async function transcribeMelody(
   } catch {
     raw = await runOnMain(audio, onProgress);
   }
-  return toPuguNotes(pickMelodyNotes(raw));
+  return toPuguNotes(refineMelody(pickMelodyNotes(raw), audio, BASIC_PITCH_RATE));
 }

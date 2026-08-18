@@ -74,12 +74,80 @@ test("pickMelodyNotes keeps a lone short syllable (G-audio 7 before 1)", () => {
 test("pickMelodyNotes keeps a run of short same-pitch syllables from collapsing to one onset", () => {
   const events = [
     ev({ startTimeSeconds: 8.028, durationSeconds: 0.12, pitchMidi: 67, amplitude: 0.63 }),
-    ev({ startTimeSeconds: 8.18, durationSeconds: 0.12, pitchMidi: 67, amplitude: 0.73 }),
-    ev({ startTimeSeconds: 8.34, durationSeconds: 0.12, pitchMidi: 67, amplitude: 0.62 }),
+    ev({ startTimeSeconds: 8.16, durationSeconds: 0.12, pitchMidi: 67, amplitude: 0.73 }),
+    ev({ startTimeSeconds: 8.29, durationSeconds: 0.12, pitchMidi: 67, amplitude: 0.62 }),
+    ev({ startTimeSeconds: 8.42, durationSeconds: 0.12, pitchMidi: 67, amplitude: 0.6 }),
+    ev({ startTimeSeconds: 8.7, durationSeconds: 0.18, pitchMidi: 66, amplitude: 0.55 }),
   ];
   const picked = pickMelodyNotes(events);
-  assert.ok(picked.length >= 1);
-  assert.ok(picked.every((n) => n.pitchMidi === 67));
+  const run = picked.filter((n) => n.pitchMidi === 67);
+  assert.ok(run.length >= 4, `expected a 4+ syllable run, got ${run.length}`);
+});
+
+test("pickMelodyNotes merges a chopped hold that is not followed by a rest", () => {
+  const events = [
+    ev({ startTimeSeconds: 4.368, durationSeconds: 0.139, pitchMidi: 67, amplitude: 0.81 }),
+    ev({ startTimeSeconds: 4.507, durationSeconds: 0.116, pitchMidi: 67, amplitude: 0.83 }),
+    ev({ startTimeSeconds: 4.623, durationSeconds: 0.116, pitchMidi: 67, amplitude: 0.79 }),
+    ev({ startTimeSeconds: 4.739, durationSeconds: 0.151, pitchMidi: 67, amplitude: 0.62 }),
+    ev({ startTimeSeconds: 4.879, durationSeconds: 0.2, pitchMidi: 69, amplitude: 0.58 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.deepEqual(
+    picked.map((n) => n.pitchMidi),
+    [67, 69],
+  );
+});
+
+test("pickMelodyNotes drops flourish re-hits of the run pitch and the next degree", () => {
+  const events = [
+    ev({ startTimeSeconds: 8.04, durationSeconds: 0.1, pitchMidi: 67, amplitude: 0.7 }),
+    ev({ startTimeSeconds: 8.16, durationSeconds: 0.1, pitchMidi: 67, amplitude: 0.7 }),
+    ev({ startTimeSeconds: 8.28, durationSeconds: 0.1, pitchMidi: 67, amplitude: 0.7 }),
+    ev({ startTimeSeconds: 8.4, durationSeconds: 0.1, pitchMidi: 67, amplitude: 0.7 }),
+    ev({ startTimeSeconds: 8.74, durationSeconds: 0.16, pitchMidi: 66, amplitude: 0.6 }),
+    ev({ startTimeSeconds: 8.9, durationSeconds: 0.14, pitchMidi: 67, amplitude: 0.75 }),
+    ev({ startTimeSeconds: 9.26, durationSeconds: 0.2, pitchMidi: 66, amplitude: 0.55 }),
+    ev({ startTimeSeconds: 9.54, durationSeconds: 0.12, pitchMidi: 62, amplitude: 0.45 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.deepEqual(
+    picked.map((n) => n.pitchMidi),
+    [67, 67, 67, 67, 66, 62],
+  );
+});
+
+test("pickMelodyNotes drops a late same-pitch trail before a third cadence", () => {
+  const events = [
+    ev({ startTimeSeconds: 9.93, durationSeconds: 0.1, pitchMidi: 67, amplitude: 0.5 }),
+    ev({ startTimeSeconds: 10.02, durationSeconds: 0.14, pitchMidi: 69, amplitude: 0.7 }),
+    ev({ startTimeSeconds: 10.24, durationSeconds: 0.17, pitchMidi: 67, amplitude: 0.63 }),
+    ev({ startTimeSeconds: 10.42, durationSeconds: 0.53, pitchMidi: 69, amplitude: 0.69 }),
+    ev({ startTimeSeconds: 10.95, durationSeconds: 0.34, pitchMidi: 67, amplitude: 0.8 }),
+    ev({ startTimeSeconds: 11.29, durationSeconds: 0.19, pitchMidi: 67, amplitude: 0.6 }),
+    ev({ startTimeSeconds: 11.64, durationSeconds: 0.28, pitchMidi: 71, amplitude: 0.57 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.deepEqual(
+    picked.map((n) => n.pitchMidi),
+    [67, 69, 67, 71],
+  );
+});
+
+test("pickMelodyNotes drops a short passing tone and a long neighbor-tone return", () => {
+  const events = [
+    ev({ startTimeSeconds: 0.0, durationSeconds: 0.2, pitchMidi: 69, amplitude: 0.6 }),
+    ev({ startTimeSeconds: 0.25, durationSeconds: 0.15, pitchMidi: 67, amplitude: 0.55 }),
+    ev({ startTimeSeconds: 0.5, durationSeconds: 0.5, pitchMidi: 69, amplitude: 0.7 }),
+    ev({ startTimeSeconds: 1.1, durationSeconds: 0.25, pitchMidi: 67, amplitude: 0.7 }),
+    ev({ startTimeSeconds: 1.45, durationSeconds: 0.12, pitchMidi: 69, amplitude: 0.5 }),
+    ev({ startTimeSeconds: 1.65, durationSeconds: 0.2, pitchMidi: 71, amplitude: 0.6 }),
+  ];
+  const picked = pickMelodyNotes(events);
+  assert.deepEqual(
+    picked.map((n) => n.pitchMidi),
+    [69, 67, 67, 71],
+  );
 });
 
 test("pickMelodyNotes keeps the C-major 2 2 pair (two Ds / G-audio two As)", () => {

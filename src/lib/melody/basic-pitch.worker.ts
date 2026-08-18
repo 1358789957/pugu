@@ -1,11 +1,6 @@
 import * as tf from "@tensorflow/tfjs";
-import {
-  BasicPitch,
-  addPitchBendsToNoteEvents,
-  noteFramesToTime,
-  outputToNotesPoly,
-} from "@spotify/basic-pitch";
-import { BASIC_PITCH_OPTS } from "./basic-pitch-options";
+import { BasicPitch } from "@spotify/basic-pitch";
+import { notesFromActivations } from "./basic-pitch-decode";
 
 type InMsg = {
   audio: Float32Array;
@@ -48,22 +43,7 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
       },
     );
 
-    const notes = noteFramesToTime(
-      addPitchBendsToNoteEvents(
-        contours,
-        outputToNotesPoly(
-          frames,
-          onsets,
-          BASIC_PITCH_OPTS.onsetThresh,
-          BASIC_PITCH_OPTS.frameThresh,
-          BASIC_PITCH_OPTS.minNoteLen,
-          BASIC_PITCH_OPTS.inferOnsets,
-          BASIC_PITCH_OPTS.maxFreq,
-          BASIC_PITCH_OPTS.minFreq,
-          BASIC_PITCH_OPTS.melodiaTrick,
-        ),
-      ),
-    );
+    const notes = notesFromActivations(frames, onsets, contours);
 
     self.postMessage({ type: "done", notes });
   } catch (err) {
