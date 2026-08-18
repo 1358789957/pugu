@@ -93,7 +93,7 @@ export function DropZone({
       </div>
       <h2 className="font-display text-xl font-medium text-fg">把歌放上来</h2>
       <p className="mt-2 max-w-sm text-sm text-muted">
-        上传成曲会先把人声拆出来，再追踪音高。人声越干净，卷帘越准。
+        上传成曲会先把人声拆出来，再交给 Basic Pitch 转成音符。人声越干净，卷帘越准。
       </p>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
         <Button disabled={disabled} onClick={() => inputRef.current?.click()}>

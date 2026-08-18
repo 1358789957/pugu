@@ -135,6 +135,15 @@ export default defineConfig(({ command }) => ({
     strictPort: true,
   },
   resolve: { tsconfigPaths: true },
+  optimizeDeps: {
+    include: ["@tensorflow/tfjs", "@spotify/basic-pitch", "@tonejs/midi"],
+  },
+  worker: {
+    format: "es",
+  },
+  ssr: {
+    external: ["@tensorflow/tfjs", "@spotify/basic-pitch", "@tonejs/midi"],
+  },
   plugins: [
     pgliteBootstrapPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.

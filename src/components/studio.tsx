@@ -131,13 +131,14 @@ export function Studio({
     const current = resultRef.current;
     if (!current) return;
     const nextOpts = { ...opts, bpm: current.bpm, ...override };
-    if (current.pitchTrack.length) {
+    if (current.sourceNotes?.length || current.pitchTrack.length) {
       const next = buildResult(
         current.pitchTrack,
         current.waveform,
         current.sampleRate,
         current.duration,
         nextOpts,
+        current.sourceNotes,
       );
       const merged = { ...next, chords: current.chords ?? [] };
       resultRef.current = merged;
@@ -466,7 +467,7 @@ export function Studio({
               听出骨头里的旋律
             </h1>
             <p className="mt-3 text-sm text-muted sm:text-base">
-              上传成曲会先拆出人声，再按歌曲速度铺到 MIDI 卷帘上。导出的文件自带 BPM，拖进编曲软件就能用。
+              上传成曲会先拆出人声，再在浏览器里用 Basic Pitch 转成音符。导出的文件自带 BPM，拖进编曲软件就能用。
             </p>
           </div>
           <DropZone
@@ -522,6 +523,7 @@ export function Studio({
                   </Badge>
                 ) : null}
                 {vocalRef.current ? <Badge>已拆人声</Badge> : null}
+                {result.sourceNotes?.length ? <Badge>Basic Pitch</Badge> : null}
                 <Badge>{result.duration.toFixed(1)} 秒</Badge>
               </div>
             </div>

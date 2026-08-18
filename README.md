@@ -2,7 +2,7 @@
 
 上传歌曲，浏览器里扒主旋律和和弦，导出库乐队能直接拖进去的 MIDI。
 
-不上传服务器，音高 / 人声分离 / 和弦都在本地算。
+不上传服务器，人声分离 / Basic Pitch 转音符 / 和弦都在本地算。
 
 ## 能干什么
 
@@ -45,4 +45,4 @@ npm run dev
 
 ## 技术
 
-TanStack Start + Web Audio。音高用 YIN，人声是 HPSS + 中置提取，和弦是色度模板 + Viterbi。谱面量化在检测到的速度和拍点上完成，播放用同一套音符做合成。
+TanStack Start + Web Audio。旋律用 Spotify Basic Pitch（TensorFlow.js，浏览器本地推理）出音符，人声仍是 HPSS + 中置提取，和弦是色度模板 + Viterbi。谱面量化在检测到的速度和拍点上完成，播放和 MIDI 用同一套分析音符；MIDI 不重新吸到 16 分格子。

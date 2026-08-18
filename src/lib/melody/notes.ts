@@ -49,6 +49,8 @@ export type AnalysisResult = {
   pitchTrack: PitchFrame[];
   /** Time of a 4/4 downbeat. Barlines sit at gridOffset + n * (4 beats). */
   gridOffset?: number;
+  /** Unquantized melody from Basic Pitch (or YIN fallback). Resegment uses this. */
+  sourceNotes?: NoteEvent[];
 };
 
 export const NOTE_NAMES_SHARP = [

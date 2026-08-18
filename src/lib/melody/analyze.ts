@@ -6,6 +6,7 @@ import {
   correctOctaves,
   detectKey,
   makeNoteId,
+  midiToHz,
   quantizeToGrid,
   resetNoteIds,
   snapMidi,
@@ -257,25 +258,8 @@ export function segmentNotes(track: PitchFrame[], opts: SegmentOptions = {}): No
   return correctOctaves(notes);
 }
 
-export function detectBpm(track: PitchFrame[]): number {
-  const onsets: number[] = [];
-  let prev = 0;
-  for (let i = 2; i < track.length - 2; i++) {
-    const flux = Math.max(0, track[i].rms - track[i - 1].rms);
-    const rising = track[i].rms > prev * 1.35 && flux > 0.004;
-    const pitchChange =
-      track[i].midi > 0 && track[i - 1].midi > 0 && track[i].midi !== track[i - 1].midi;
-    if ((rising && track[i].conf > 0.3) || (pitchChange && track[i].conf > 0.45)) {
-      if (onsets.length === 0 || track[i].t - onsets[onsets.length - 1] > 0.12) {
-        onsets.push(track[i].t);
-      }
-    }
-    prev = track[i].rms;
-  }
-  if (onsets.length < 4) return 100;
-
-  const ioi: number[] = [];
-  for (let i = 1; i < onsets.length; i++) ioi.push(onsets[i] - onsets[i - 1]);
+function bpmFromIntervals(ioi: number[]): number {
+  if (ioi.length < 3) return 100;
   const bins = new Map<number, number>();
   for (const d of ioi) {
     let bpm = 60 / d;
@@ -304,15 +288,109 @@ export function detectBpm(track: PitchFrame[]): number {
   return best;
 }
 
+export function detectBpm(track: PitchFrame[]): number {
+  const onsets: number[] = [];
+  let prev = 0;
+  for (let i = 2; i < track.length - 2; i++) {
+    const flux = Math.max(0, track[i].rms - track[i - 1].rms);
+    const rising = track[i].rms > prev * 1.35 && flux > 0.004;
+    const pitchChange =
+      track[i].midi > 0 && track[i - 1].midi > 0 && track[i].midi !== track[i - 1].midi;
+    if ((rising && track[i].conf > 0.3) || (pitchChange && track[i].conf > 0.45)) {
+      if (onsets.length === 0 || track[i].t - onsets[onsets.length - 1] > 0.12) {
+        onsets.push(track[i].t);
+      }
+    }
+    prev = track[i].rms;
+  }
+  if (onsets.length < 4) return 100;
+  const ioi: number[] = [];
+  for (let i = 1; i < onsets.length; i++) ioi.push(onsets[i] - onsets[i - 1]);
+  return bpmFromIntervals(ioi);
+}
+
+export function detectBpmFromNotes(notes: NoteEvent[]): number {
+  if (notes.length < 4) return 100;
+  const starts = notes.map((n) => n.rawStart ?? n.start).sort((a, b) => a - b);
+  const ioi: number[] = [];
+  for (let i = 1; i < starts.length; i++) {
+    const d = starts[i] - starts[i - 1];
+    if (d > 0.12 && d < 2.4) ioi.push(d);
+  }
+  return bpmFromIntervals(ioi);
+}
+
+export function notesToPitchTrack(notes: NoteEvent[], duration: number, origin = 0): PitchFrame[] {
+  const hop = 0.01;
+  const frames: PitchFrame[] = [];
+  const sorted = [...notes].sort((a, b) => a.start - b.start);
+  let i = 0;
+  const end = origin + duration;
+  for (let t = origin; t < end; t += hop) {
+    while (i < sorted.length && sorted[i].start + sorted[i].duration < t) i += 1;
+    const n = sorted[i];
+    if (n && t >= n.start && t < n.start + n.duration) {
+      frames.push({
+        t,
+        hz: midiToHz(n.midi),
+        midi: n.midi,
+        cents: 0,
+        conf: n.confidence,
+        rms: Math.max(0.01, n.velocity * 0.08),
+      });
+    } else {
+      frames.push({ t, hz: 0, midi: 0, cents: 0, conf: 0, rms: 0.001 });
+    }
+  }
+  return frames;
+}
+
+function waveformFromBuffer(buffer: AudioBuffer): Float32Array {
+  const mono = mixToMono(buffer);
+  const samples = downsampleMono(mono, buffer.sampleRate, TARGET_RATE);
+  return downsamplePeaks(
+    samples,
+    Math.min(2400, Math.max(400, Math.floor(samples.length / 80))),
+  );
+}
+
+function sliceAudioBuffer(buffer: AudioBuffer, startSec: number, endSec: number): AudioBuffer {
+  const sr = buffer.sampleRate;
+  const a = Math.max(0, Math.floor(startSec * sr));
+  const b = Math.min(buffer.length, Math.floor(endSec * sr));
+  const length = Math.max(1, b - a);
+  const ctx = new OfflineAudioContext(buffer.numberOfChannels, length, sr);
+  const sliced = ctx.createBuffer(buffer.numberOfChannels, length, sr);
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    sliced.getChannelData(c).set(buffer.getChannelData(c).subarray(a, a + length));
+  }
+  return sliced;
+}
+
+function filterSourceNotes(notes: NoteEvent[], opts: SegmentOptions): NoteEvent[] {
+  const minConf = opts.minConfidence ?? 0.42;
+  const minDur = opts.minDuration ?? 0.09;
+  return notes
+    .filter((n) => n.confidence >= minConf && (n.rawDuration ?? n.duration) >= minDur)
+    .map((n) => {
+      const start = n.rawStart ?? n.start;
+      const duration = n.rawDuration ?? n.duration;
+      return { ...n, start, duration, rawStart: start, rawDuration: duration };
+    });
+}
+
 export function buildResult(
   track: PitchFrame[],
   waveform: Float32Array,
   sampleRate: number,
   duration: number,
   opts: SegmentOptions = {},
+  sourceNotes?: NoteEvent[],
 ): AnalysisResult {
-  let notes = segmentNotes(track, opts);
-  const bpm = opts.bpm ?? detectBpm(track);
+  let notes = sourceNotes?.length ? filterSourceNotes(sourceNotes, opts) : segmentNotes(track, opts);
+  const bpm =
+    opts.bpm ??
+    (sourceNotes?.length ? detectBpmFromNotes(sourceNotes) : detectBpm(track));
   let gridOffset = 0;
   if (opts.quantize !== false) {
     const q = quantizeToGrid(notes, bpm);
@@ -331,6 +409,7 @@ export function buildResult(
     waveform,
     pitchTrack: track,
     gridOffset,
+    sourceNotes,
   };
 }
 
@@ -342,16 +421,59 @@ export async function analyzeMelody(
   let work = buffer;
   let vocalBuffer: AudioBuffer | undefined;
   if (opts.isolateVocals) {
-    vocalBuffer = await isolateVocals(buffer, (p, label) => onProgress?.(p * 0.3, label));
+    vocalBuffer = await isolateVocals(buffer, (p, label) => onProgress?.(p * 0.28, label));
     work = vocalBuffer;
   }
-  const { track, waveform, sampleRate, duration } = await extractPitchTrack(
-    work,
-    opts,
-    (p, label) => onProgress?.(opts.isolateVocals ? 0.3 + p * 0.64 : p, label),
-  );
-  onProgress?.(0.96, "切分音符");
-  const result = buildResult(track, waveform, sampleRate, duration, opts);
+
+  const start = opts.startSeconds ?? 0;
+  const maxSeconds = opts.maxSeconds ?? 360;
+  const end = Math.min(opts.endSeconds ?? work.duration, start + maxSeconds, work.duration);
+  const duration = Math.max(0.05, end - start);
+  const region =
+    start <= 0 && end >= work.duration - 1e-4 ? work : sliceAudioBuffer(work, start, end);
+
+  onProgress?.(opts.isolateVocals ? 0.3 : 0.06, "准备 Basic Pitch");
+  const waveform = waveformFromBuffer(region);
+
+  let sourceNotes: NoteEvent[] | undefined;
+  try {
+    const { transcribeMelody } = await import("./basic-pitch");
+    const transcribed = await transcribeMelody(region, (pct) => {
+      onProgress?.(0.32 + pct * 0.5, "Basic Pitch 转音符");
+    });
+    sourceNotes = start > 0
+      ? transcribed.map((n) => ({
+          ...n,
+          start: n.start + start,
+          rawStart: (n.rawStart ?? n.start) + start,
+        }))
+      : transcribed;
+    if (!sourceNotes.length) sourceNotes = undefined;
+  } catch (err) {
+    console.warn("Basic Pitch failed, falling back to YIN", err);
+    sourceNotes = undefined;
+  }
+
+  let track: PitchFrame[];
+  let sampleRate = TARGET_RATE;
+  let result: AnalysisResult;
+
+  if (sourceNotes?.length) {
+    onProgress?.(0.84, "整理音符");
+    track = notesToPitchTrack(sourceNotes, duration, start);
+    result = buildResult(track, waveform, sampleRate, duration, opts, sourceNotes);
+  } else {
+    const extracted = await extractPitchTrack(
+      work,
+      opts,
+      (p, label) => onProgress?.(opts.isolateVocals ? 0.3 + p * 0.54 : p * 0.84, label),
+    );
+    track = extracted.track;
+    sampleRate = extracted.sampleRate;
+    onProgress?.(0.88, "切分音符");
+    result = buildResult(track, extracted.waveform, sampleRate, extracted.duration, opts);
+  }
+
   result.chords = await detectChords(buffer, {
     bpm: result.bpm,
     key: result.key,
