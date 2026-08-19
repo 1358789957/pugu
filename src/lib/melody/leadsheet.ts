@@ -117,7 +117,10 @@ export function assignLyrics(
     .map((s) => s.trim())
     .filter(Boolean);
   if (!lines.length) return [];
-  const phrases = melodyPhrases(result.notes);
+  const phrases =
+    result.listenPhrases?.length
+      ? result.listenPhrases.map((p) => ({ start: p.start, end: p.end }))
+      : melodyPhrases(result.notes);
   if (!phrases.length) {
     const slice = result.duration / lines.length;
     return lines.map((text, i) => ({

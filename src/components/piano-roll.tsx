@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { degreeFill, degreeFillAlpha } from "@/lib/melody/degree-colors";
+import { jianpuDegree } from "@/lib/melody/leadsheet";
 import {
   beatSeconds,
   resolveGridOffset,
@@ -183,15 +185,35 @@ export function PianoRoll({
       ctx.fillText("和弦", 8, RULER_H + CHORD_H / 2);
     }
 
+    if (result.listenPhrases?.length) {
+      ctx.font = "10px IBM Plex Mono, ui-monospace, monospace";
+      ctx.textBaseline = "top";
+      for (let i = 0; i < result.listenPhrases.length; i++) {
+        const p = result.listenPhrases[i]!;
+        const x = KEY_W + p.start * pxPerSec;
+        const w = Math.max(12, (p.end - p.start) * pxPerSec);
+        ctx.fillStyle = i % 2 === 0 ? "rgba(232,216,196,0.04)" : "rgba(232,216,196,0.02)";
+        ctx.fillRect(x, head, w, height - head);
+        ctx.fillStyle = muted;
+        ctx.fillText(`第${i + 1}句 ${p.noteCount}`, x + 4, head + 4);
+      }
+    }
+
     for (const n of result.notes) {
       if (n.midi < LOW || n.midi > HIGH) continue;
       const y = head + (HIGH - n.midi) * ROW_H + 2;
       const x = KEY_W + n.start * pxPerSec;
       const w = Math.max(6, n.duration * pxPerSec - 2);
       const selected = n.id === selectedId;
-      ctx.fillStyle = selected ? accent : `rgba(232,216,196,${0.38 + n.velocity * 0.4})`;
+      ctx.fillStyle = selected ? accent : degreeFillAlpha(n.midi, 0.42 + n.velocity * 0.4);
       roundRect(ctx, x, y, w, ROW_H - 4, 3);
       ctx.fill();
+      if (w >= 16) {
+        ctx.fillStyle = selected ? fg : degreeFill(n.midi);
+        ctx.font = "10px IBM Plex Mono, ui-monospace, monospace";
+        ctx.textBaseline = "middle";
+        ctx.fillText(jianpuDegree(n.midi), x + 4, y + (ROW_H - 4) / 2);
+      }
       if (selected) {
         ctx.strokeStyle = fg;
         ctx.lineWidth = 1.2;

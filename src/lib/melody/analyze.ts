@@ -7,10 +7,10 @@ import {
   detectKey,
   makeNoteId,
   midiToHz,
-  quantizeToGrid,
   resetNoteIds,
   snapMidi,
 } from "./notes";
+import { assignDisplayGrid } from "./display-grid";
 import {
   downsampleMono,
   downsamplePeaks,
@@ -35,6 +35,9 @@ export type AnalyzeOptions = SegmentOptions & {
   startSeconds?: number;
   endSeconds?: number;
   isolateVocals?: boolean;
+  /** Optional lyric lines. Used as phrase cuts when `useLyricWindows` is set. */
+  lyricLines?: { start?: number; end?: number; text: string }[];
+  useLyricWindows?: boolean;
 };
 
 const TARGET_RATE = 16000;
@@ -393,7 +396,7 @@ export function buildResult(
     (sourceNotes?.length ? detectBpmFromNotes(sourceNotes) : detectBpm(track));
   let gridOffset = 0;
   if (opts.quantize !== false) {
-    const q = quantizeToGrid(notes, bpm);
+    const q = assignDisplayGrid(notes, bpm);
     notes = q.notes;
     gridOffset = q.gridOffset;
   } else {
@@ -432,31 +435,43 @@ export async function analyzeMelody(
   const region =
     start <= 0 && end >= work.duration - 1e-4 ? work : sliceAudioBuffer(work, start, end);
 
-  onProgress?.(opts.isolateVocals ? 0.3 : 0.06, "准备 Basic Pitch");
+  onProgress?.(opts.isolateVocals ? 0.3 : 0.06, "按句听谱");
   const waveform = waveformFromBuffer(region);
 
   let sourceNotes: NoteEvent[] | undefined;
   let contourTrack: PitchFrame[] | undefined;
   let rawContourTrack: PitchFrame[] | undefined;
+  let listenPhrases: AnalysisResult["listenPhrases"];
   try {
-    const { transcribeMelodyDetail } = await import("./basic-pitch");
-    const transcribed = await transcribeMelodyDetail(region, (pct) => {
-      onProgress?.(0.32 + pct * 0.5, "Basic Pitch 转音符");
+    const { listenToScore } = await import("./listen-score");
+    onProgress?.(0.36, "按句数音头");
+    const scored = listenToScore({
+      samples: mixToMono(region),
+      sampleRate: region.sampleRate,
+      lyrics: opts.lyricLines,
+      useLyricWindows: opts.useLyricWindows,
+      bpm: opts.bpm,
     });
     const shift = start > 0 ? start : 0;
-    sourceNotes = shift
-      ? transcribed.notes.map((n) => ({
-          ...n,
-          start: n.start + shift,
-          rawStart: (n.rawStart ?? n.start) + shift,
-        }))
-      : transcribed.notes;
+    const bumpNote = (n: NoteEvent): NoteEvent =>
+      shift
+        ? {
+            ...n,
+            start: n.start + shift,
+            rawStart: (n.rawStart ?? n.start) + shift,
+          }
+        : n;
+    sourceNotes = scored.notes.map(bumpNote);
     if (!sourceNotes.length) sourceNotes = undefined;
     const bump = (f: PitchFrame) => (shift ? { ...f, t: f.t + shift } : f);
-    contourTrack = transcribed.pitchTrack.map(bump);
-    rawContourTrack = transcribed.rawPitchTrack.map(bump);
+    contourTrack = scored.pitchTrack.map(bump);
+    rawContourTrack = scored.rawPitchTrack.map(bump);
+    listenPhrases = shift
+      ? scored.phrases.map((p) => ({ ...p, start: p.start + shift, end: p.end + shift }))
+      : scored.phrases;
+    if (scored.bpm && !opts.bpm) opts = { ...opts, bpm: scored.bpm };
   } catch (err) {
-    console.warn("Basic Pitch failed, falling back to YIN", err);
+    console.warn("listen-to-score failed, falling back to YIN", err);
     sourceNotes = undefined;
   }
 
@@ -465,10 +480,11 @@ export async function analyzeMelody(
   let result: AnalysisResult;
 
   if (sourceNotes?.length) {
-    onProgress?.(0.84, "整理音符");
+    onProgress?.(0.84, "铺格子并补音高");
     track = contourTrack?.length ? contourTrack : notesToPitchTrack(sourceNotes, duration, start);
     result = buildResult(track, waveform, sampleRate, duration, opts, sourceNotes);
     result.rawPitchTrack = rawContourTrack;
+    result.listenPhrases = listenPhrases;
   } else {
     const extracted = await extractPitchTrack(
       work,

@@ -5,6 +5,7 @@ import { LeadSheet } from "@/components/lead-sheet";
 import { DropZone } from "@/components/drop-zone";
 import { NoteList } from "@/components/note-list";
 import { PianoRoll } from "@/components/piano-roll";
+import { WaterfallGrid } from "@/components/waterfall-grid";
 import { PitchCurve } from "@/components/pitch-curve";
 import { PlayerBar } from "@/components/player-bar";
 import { StaffView } from "@/components/staff-view";
@@ -23,12 +24,12 @@ import {
   clampBpm,
   detectKey,
   findGridOffset,
-  quantizeToGrid,
   transposeNotes,
   type AnalysisResult,
   type NoteEvent,
 } from "@/lib/melody/notes";
 import { player, type PlayMode } from "@/lib/melody/synth";
+import { assignDisplayGrid } from "@/lib/melody/display-grid";
 import { saveTranscription } from "@/lib/transcriptions";
 import { downloadBlob, audioBufferToWav } from "@/lib/utils";
 
@@ -141,14 +142,19 @@ export function Studio({
         nextOpts,
         current.sourceNotes,
       );
-      const merged = { ...next, chords: current.chords ?? [], rawPitchTrack: current.rawPitchTrack };
+      const merged = {
+        ...next,
+        chords: current.chords ?? [],
+        rawPitchTrack: current.rawPitchTrack,
+        listenPhrases: current.listenPhrases,
+      };
       resultRef.current = merged;
       setResult(merged);
       setSelectedId(null);
       return;
     }
     if (nextOpts.quantize) {
-      const q = quantizeToGrid(current.notes, nextOpts.bpm ?? current.bpm);
+      const q = assignDisplayGrid(current.notes, nextOpts.bpm ?? current.bpm);
       const next = {
         ...current,
         notes: q.notes,
@@ -166,7 +172,9 @@ export function Studio({
     if (!current) return;
     const bpm = clampBpm(next);
     if (bpm === current.bpm) return;
-    const q = quantize ? quantizeToGrid(current.notes, bpm) : { notes: current.notes, gridOffset: findGridOffset(current.notes, bpm) };
+    const q = quantize
+      ? assignDisplayGrid(current.notes, bpm)
+      : { notes: current.notes, gridOffset: findGridOffset(current.notes, bpm) };
     const chords = snapChordsToGrid(current.chords, bpm, q.gridOffset);
     const updated = { ...current, bpm, notes: q.notes, gridOffset: q.gridOffset, chords };
     resultRef.current = updated;
@@ -202,7 +210,7 @@ export function Studio({
       setResult(analyzed);
       setStatus("ready");
       if (!next && mode === "vocals") setMode("source");
-      toast.success(next ? "已用 HPSS 弱分离重扒（会漏伴奏）" : "已按干声直送 Basic Pitch");
+      toast.success(next ? "已用 HPSS 弱分离后按句听谱" : "已按干声按句听谱");
     } catch {
       setStatus("ready");
       toast.error("重新分离失败");
@@ -240,8 +248,8 @@ export function Studio({
       setStatus("ready");
       toast.success(
         useHpss
-          ? `HPSS 弱分离 · ${next.notes.length} 个音 · ${next.key.name}`
-          : `干声直送 Basic Pitch · ${next.notes.length} 个音 · ${next.key.name}`,
+          ? `HPSS 弱分离 · 按句听谱 · ${next.notes.length} 个音 · ${next.key.name}`
+          : `干声按句听谱 · ${next.notes.length} 个音 · ${next.key.name}`,
       );
     } catch (err) {
       console.error(err);
@@ -527,7 +535,14 @@ export function Studio({
                   </Badge>
                 ) : null}
                 {vocalRef.current ? <Badge>已拆人声</Badge> : null}
-                {result.sourceNotes?.length ? <Badge>Basic Pitch</Badge> : null}
+                {result.listenPhrases?.length ? (
+                  <Badge>
+                    {result.listenPhrases.length} 句 ·{" "}
+                    {result.listenPhrases.map((p) => p.noteCount).join("+")} 音
+                  </Badge>
+                ) : result.sourceNotes?.length ? (
+                  <Badge>听谱</Badge>
+                ) : null}
                 <Badge>{result.duration.toFixed(1)} 秒</Badge>
               </div>
             </div>
@@ -603,6 +618,7 @@ export function Studio({
             <Tabs defaultValue="roll" className="min-w-0">
               <TabsList>
                 <TabsTrigger value="roll">钢琴卷帘</TabsTrigger>
+                <TabsTrigger value="fall">瀑布</TabsTrigger>
                 <TabsTrigger value="staff">五线谱</TabsTrigger>
                 <TabsTrigger value="chords">和弦</TabsTrigger>
                 <TabsTrigger value="sheet">词谱</TabsTrigger>
@@ -620,8 +636,11 @@ export function Studio({
                   className="h-96"
                 />
                 <p className="mt-2 hidden text-xs text-subtle sm:block">
-                  小节尺按歌曲速度铺格 · 点空白处定位 · 拖动音符改音高 · Ctrl 滚轮缩放
+                  着色是 C=1 固定调级数 · 小节尺按速度铺格 · 点空白处定位 · 拖动改音高 · Ctrl 滚轮缩放
                 </p>
+              </TabsContent>
+              <TabsContent value="fall" className="mt-3">
+                <WaterfallGrid result={result} currentTime={currentTime} onSeek={seek} />
               </TabsContent>
               <TabsContent value="staff" className="mt-3">
                 <StaffView

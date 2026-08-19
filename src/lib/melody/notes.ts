@@ -8,6 +8,8 @@ export type NoteEvent = {
   /** Unquantized analysis time. MIDI export uses this; the staff stays on `start`. */
   rawStart?: number;
   rawDuration?: number;
+  /** Phrase-local decode index. Extras stay in this phrase. */
+  phraseIndex?: number;
 };
 
 export type ChordQuality = "maj" | "min" | "7" | "m7" | "sus4" | "dim";
@@ -56,8 +58,19 @@ export type AnalysisResult = {
   rawPitchTrack?: PitchFrame[];
   /** Time of a 4/4 downbeat. Barlines sit at gridOffset + n * (4 beats). */
   gridOffset?: number;
-  /** Unquantized melody from Basic Pitch (or YIN fallback). Resegment uses this. */
+  /** Unquantized melody from the listen-to-score path (or YIN fallback). Resegment uses this. */
   sourceNotes?: NoteEvent[];
+  /** Phrase windows + local note counts from the real-audio path. */
+  listenPhrases?: ListenPhraseInfo[];
+};
+
+export type ListenPhraseInfo = {
+  start: number;
+  end: number;
+  text?: string;
+  noteCount: number;
+  section: "verse" | "pre" | "chorus" | "other";
+  grid: "16th" | "triplet";
 };
 
 export const NOTE_NAMES_SHARP = [
