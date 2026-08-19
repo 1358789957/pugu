@@ -14,7 +14,7 @@ import {
   type PhraseOnset,
   type PhraseWindow,
 } from "./phrase-onsets";
-import { fillUncertainPitches, guessSection } from "./pitch-fill";
+import { guessSection, markListenPitches } from "./pitch-fill";
 
 export type ListenPhrase = ListenPhraseInfo;
 
@@ -93,7 +93,7 @@ function onsetToNote(o: PhraseOnset, phraseIndex: number): NoteEvent {
  *   1. Cut by lyric line / vocal phrase (phrase-local).
  *   2. Get each phrase's NOTE COUNT from vocal onsets / f0 re-attacks.
  *   3. Place durations on a display grid (16th / triplet). Color later in UI.
- *   4. Only then fill uncertain pitches (motive, smoothness, section).
+ *   4. Mark uncertain pitches. Do not invent a melody — the user writes degrees.
  *
  * MIDI export must keep rawStart / rawDuration. This function never snaps those.
  */
@@ -145,15 +145,11 @@ export function listenToScore(opts: ListenScoreOptions): ListenScoreResult {
     slotted.push(...gridded.notes);
   }
 
-  // 4. Pitch fill after count + grid.
-  const filled = fillUncertainPitches(
-    slotted,
-    contour,
-    phrases.map((p) => ({ start: p.start, end: p.end, section: p.section })),
-  );
+  // 4. Flag holes only. Pitch comes from the user's listen, not smoothness.
+  const marked = markListenPitches(slotted, contour);
 
   return {
-    notes: filled,
+    notes: marked,
     phrases,
     pitchTrack: contourToPitchFrames(contour),
     rawPitchTrack: contourToPitchFrames(contour.filter((f) => !f.filled)),

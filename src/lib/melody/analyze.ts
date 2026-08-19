@@ -374,7 +374,10 @@ function filterSourceNotes(notes: NoteEvent[], opts: SegmentOptions): NoteEvent[
   const minConf = opts.minConfidence ?? 0.42;
   const minDur = opts.minDuration ?? 0.09;
   return notes
-    .filter((n) => n.confidence >= minConf && (n.rawDuration ?? n.duration) >= minDur)
+    .filter((n) => {
+      if (n.pitchLocked) return true;
+      return n.confidence >= minConf && (n.rawDuration ?? n.duration) >= minDur;
+    })
     .map((n) => {
       const start = n.rawStart ?? n.start;
       const duration = n.rawDuration ?? n.duration;
@@ -480,7 +483,7 @@ export async function analyzeMelody(
   let result: AnalysisResult;
 
   if (sourceNotes?.length) {
-    onProgress?.(0.84, "铺格子并补音高");
+    onProgress?.(0.84, "铺格子，音高留你听写");
     track = contourTrack?.length ? contourTrack : notesToPitchTrack(sourceNotes, duration, start);
     result = buildResult(track, waveform, sampleRate, duration, opts, sourceNotes);
     result.rawPitchTrack = rawContourTrack;

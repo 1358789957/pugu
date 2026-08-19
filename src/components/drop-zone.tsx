@@ -93,7 +93,7 @@ export function DropZone({
       </div>
       <h2 className="font-display text-xl font-medium text-fg">把歌放上来</h2>
       <p className="mt-2 max-w-sm text-sm text-muted">
-        有干声就走「这是干声」：不再做 HPSS，整段交给 Basic Pitch。成曲只能用弱分离，会漏伴奏。
+        机器按句切开、数有几个音、排好格子。音高你对着原曲听写填进去，再叠着播核对。
       </p>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
         <Button disabled={disabled} onClick={() => inputRef.current?.click()}>
@@ -127,7 +127,7 @@ export function DropZone({
               )}
             >
               <span className="font-medium">这是干声</span>
-              <span className="text-xs text-subtle">已拆人声 / 哼唱，直接进 Basic Pitch</span>
+              <span className="text-xs text-subtle">已拆人声 / 哼唱，按句数格子</span>
             </button>
             <button
               type="button"

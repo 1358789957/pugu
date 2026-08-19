@@ -19,7 +19,7 @@ import {
 } from "../src/lib/melody/hirumawari-opening.ts";
 import { listenToScore } from "../src/lib/melody/listen-score.ts";
 import { notesToTicks } from "../src/lib/melody/midi.ts";
-import { fillUncertainPitches } from "../src/lib/melody/pitch-fill.ts";
+import { fillUncertainPitches, markListenPitches } from "../src/lib/melody/pitch-fill.ts";
 import { countPhraseOnsets, onsetsFromContour } from "../src/lib/melody/phrase-onsets.ts";
 import { readWavMono16 } from "./wav-pcm.mjs";
 
@@ -189,6 +189,22 @@ test("pitch fill keeps accidentals — no diatonic whitelist", () => {
   }
   const filled = fillUncertainPitches(notes, frames, [{ start: 0, end: 1, section: "verse" }]);
   assert.equal(filled[1].midi, 66, `F# must survive, got ${filled[1].midi}`);
+});
+
+test("markListenPitches flags a hole without rewriting neighbors", () => {
+  const notes = [
+    { id: "a", midi: 67, start: 0, duration: 0.2, velocity: 0.7, confidence: 0.9, rawStart: 0, rawDuration: 0.2 },
+    { id: "b", midi: 60, start: 0.22, duration: 0.2, velocity: 0.4, confidence: 0.2, rawStart: 0.22, rawDuration: 0.2 },
+    { id: "c", midi: 66, start: 0.44, duration: 0.15, velocity: 0.7, confidence: 0.79, rawStart: 0.44, rawDuration: 0.15 },
+  ];
+  const frames = [];
+  for (let t = 0.44; t < 0.59; t += 0.01) {
+    frames.push({ t, hz: 370, periodSec: 1 / 370, periodSamples: 0, midi: 66.2, conf: 0.71, rms: 0.13, voiced: true, filled: false });
+  }
+  const marked = markListenPitches(notes, frames);
+  assert.equal(marked[1].uncertain, true);
+  assert.equal(marked[2].uncertain, false);
+  assert.equal(marked[2].midi, 66);
 });
 
 test("pitch fill does not rewrite a stable folded accidental or 1", () => {

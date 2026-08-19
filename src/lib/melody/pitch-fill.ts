@@ -198,3 +198,26 @@ export function fillUncertainPitches(
 
   return slots.map(({ hint, octaveFolded, hintConf, uncertain, ...n }) => n);
 }
+
+/**
+ * After count + grid: fold register, flag holes, do **not** invent a melody.
+ * The user writes degrees onto the slots. Smoothness fill stays available
+ * for tests / optional guess — listen-to-score does not use it as the score.
+ */
+export function markListenPitches(notes: NoteEvent[], frames: ContourFrame[]): NoteEvent[] {
+  if (!notes.length) return notes;
+  return notes.map((n) => {
+    if (n.pitchLocked) return { ...n, uncertain: false };
+    const start = n.rawStart ?? n.start;
+    const duration = n.rawDuration ?? n.duration;
+    const hint = contourHint(frames, start, start + duration);
+    const midi = hint.midi || n.midi;
+    const uncertain = hint.conf < 0.42 || hint.midi <= 0 || n.confidence < 0.4;
+    return {
+      ...n,
+      midi,
+      uncertain,
+      confidence: Math.max(n.confidence, hint.conf),
+    };
+  });
+}

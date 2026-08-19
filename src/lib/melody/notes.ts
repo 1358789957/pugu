@@ -10,6 +10,10 @@ export type NoteEvent = {
   rawDuration?: number;
   /** Phrase-local decode index. Extras stay in this phrase. */
   phraseIndex?: number;
+  /** Machine pitch is a hint only — show `?` until the user writes the degree. */
+  uncertain?: boolean;
+  /** User wrote this pitch onto a counted slot. Resegment must keep it. */
+  pitchLocked?: boolean;
 };
 
 export type ChordQuality = "maj" | "min" | "7" | "m7" | "sus4" | "dim";

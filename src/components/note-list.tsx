@@ -43,7 +43,9 @@ export function NoteList({
               }`}
             >
               <span className="w-6 font-mono text-xs text-subtle tabular-nums">{i + 1}</span>
-              <span className="w-10 font-mono text-fg">{midiName(n.midi, flats)}</span>
+              <span className="w-10 font-mono text-fg">
+                {n.uncertain && !n.pitchLocked ? "?" : midiName(n.midi, flats)}
+              </span>
               <span className="flex-1 font-mono text-xs tabular-nums">
                 {formatTime(n.start)} · {durationBeats(n.duration, result.bpm).toFixed(2)} 拍
               </span>

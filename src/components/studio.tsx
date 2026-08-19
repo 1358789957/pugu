@@ -112,10 +112,23 @@ export function Studio({
   function applyNotes(notes: NoteEvent[], chords = resultRef.current?.chords) {
     const current = resultRef.current;
     if (!current) return;
+    const byId = new Map(notes.map((n) => [n.id, n]));
+    const sourceNotes = current.sourceNotes?.map((s) => {
+      const u = byId.get(s.id);
+      if (!u) return s;
+      return {
+        ...s,
+        midi: u.midi,
+        uncertain: u.uncertain,
+        pitchLocked: u.pitchLocked,
+        confidence: u.confidence,
+      };
+    });
     const key = detectKey(notes);
     const next = {
       ...current,
       notes,
+      sourceNotes,
       key,
       chords: chords ? transposeChords(chords, 0, key) : [],
     };
@@ -210,7 +223,7 @@ export function Studio({
       setResult(analyzed);
       setStatus("ready");
       if (!next && mode === "vocals") setMode("source");
-      toast.success(next ? "已用 HPSS 弱分离后按句听谱" : "已按干声按句听谱");
+      toast.success(next ? "已弱分离并重新铺格，去瀑布听写" : "已按干声重新铺格，去瀑布听写");
     } catch {
       setStatus("ready");
       toast.error("重新分离失败");
@@ -248,8 +261,8 @@ export function Studio({
       setStatus("ready");
       toast.success(
         useHpss
-          ? `HPSS 弱分离 · 按句听谱 · ${next.notes.length} 个音 · ${next.key.name}`
-          : `干声按句听谱 · ${next.notes.length} 个音 · ${next.key.name}`,
+          ? `已按句铺格 ${next.notes.length} 个 · 去瀑布听写音高`
+          : `干声已按句铺格 ${next.notes.length} 个 · 去瀑布听写音高`,
       );
     } catch (err) {
       console.error(err);
@@ -606,19 +619,19 @@ export function Studio({
           />
           <p className="text-xs text-subtle">
             {mode === "melody"
-              ? "旋律模式按谱上的音符和和弦合成，光标跟着五线谱 / 词谱 / 卷帘走。"
+              ? "只听你填进格子的音。还没听写的格子是机器的提示，别当谱。"
               : mode === "both"
-                ? "对照：谱的合成音叠在干声或原曲上。"
+                ? "对照：你填的音叠在原曲或干声上，听对不对。"
                 : mode === "vocals"
-                  ? "正在听拆出的干声。"
-                  : "正在听原曲。"}
+                  ? "正在听拆出的干声。点瀑布格子会跳到那一拍。"
+                  : "正在听原曲。点格子听这一拍，再写下数字。"}
           </p>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <Tabs defaultValue="roll" className="min-w-0">
+            <Tabs defaultValue="fall" className="min-w-0">
               <TabsList>
-                <TabsTrigger value="roll">钢琴卷帘</TabsTrigger>
                 <TabsTrigger value="fall">瀑布</TabsTrigger>
+                <TabsTrigger value="roll">钢琴卷帘</TabsTrigger>
                 <TabsTrigger value="staff">五线谱</TabsTrigger>
                 <TabsTrigger value="chords">和弦</TabsTrigger>
                 <TabsTrigger value="sheet">词谱</TabsTrigger>
@@ -640,7 +653,12 @@ export function Studio({
                 </p>
               </TabsContent>
               <TabsContent value="fall" className="mt-3">
-                <WaterfallGrid result={result} currentTime={currentTime} onSeek={seek} />
+                <WaterfallGrid
+                  result={result}
+                  currentTime={currentTime}
+                  onSeek={seek}
+                  onChangeNotes={applyNotes}
+                />
               </TabsContent>
               <TabsContent value="staff" className="mt-3">
                 <StaffView
