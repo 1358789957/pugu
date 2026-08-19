@@ -2,6 +2,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { POP_FULL_FIXTURES } from "../src/lib/melody/pop-full-fixtures.ts";
+import { NEW_POP_IDS } from "../src/lib/melody/pop-new-fixtures.ts";
 import {
   ALIGN_SONGS,
   SYNTH_ALIGN_BPM,
@@ -141,10 +142,12 @@ export function formatWorstPhrases(rows, limit = 12) {
   );
 }
 
-export async function runFullPopSet(onRow) {
+export async function runFullPopSet(onRow, onlyIds) {
+  const allow = onlyIds?.length ? new Set(onlyIds) : null;
   const phraseById = new Map(ALIGN_SONGS.filter((s) => !s.liveAudio).map((s) => [s.id, s]));
   const rows = [];
   for (const full of POP_FULL_FIXTURES) {
+    if (allow && !allow.has(full.id)) continue;
     const meta = phraseById.get(full.id);
     if (!meta) throw new Error(`missing first-line fixture for ${full.id}`);
     const t0 = Date.now();
@@ -239,9 +242,14 @@ export function formatLiveSideGroup(result) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  const idArg = process.argv.find((a) => a.startsWith("--ids="));
+  const onlyNew = process.argv.includes("--new");
+  const onlyIds = onlyNew ? [...NEW_POP_IDS] : idArg ? idArg.slice(6).split(",").filter(Boolean) : null;
   const outPath = process.argv.includes("--json")
     ? process.argv[process.argv.indexOf("--json") + 1]
-    : "/tmp/align-full-pop.last.json";
+    : onlyIds
+      ? "/tmp/align-full-pop.new.json"
+      : "/tmp/align-full-pop.last.json";
   const rows = [];
   const pop = await runFullPopSet((row) => {
     rows.push(row);
@@ -250,8 +258,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       `${row.id} ${row.span} phrases=${s.nPhrases} mean=${pct(s.meanAcc)} exact=${s.exactPhrases}/${s.nPhrases} micro=${s.matched}/${s.expectedLen} extra=${s.extra} miss=${s.missing} ${row.elapsedMs}ms`,
     );
     writeFileSync(outPath, JSON.stringify({ pop: rows }, null, 2));
-  });
-  const live = await runHirumawariLivePoints();
+  }, onlyIds);
+  const live = onlyIds ? { skip: "filtered run (new songs only)", rows: [] } : await runHirumawariLivePoints();
   writeFileSync(outPath, JSON.stringify({ pop, live }, null, 2));
   console.log(formatFullPopTable(pop));
   console.log(formatWorstPhrases(pop));

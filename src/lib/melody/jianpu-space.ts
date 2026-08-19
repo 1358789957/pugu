@@ -86,7 +86,8 @@ export function parseJianpuText(text: string): ParsedJianpuSong {
 
   for (const line of lines) {
     if (line.startsWith("/key")) {
-      key = line.replace(/\s+/g, "");
+      const m = line.match(/\/key\([A-G][#b]?\d\)/i);
+      key = m ? m[0] : line.replace(/\s+/g, "");
       continue;
     }
     const bpmNorm = fromFullwidthDigits(line);
@@ -131,6 +132,33 @@ export function parseJianpuText(text: string): ParsedJianpuSong {
 
 export function parseJianpuPage(html: string): ParsedJianpuSong {
   return parseJianpuText(extractJianpuOut(html));
+}
+
+const KEY_PC: Record<string, number> = {
+  C: 0,
+  D: 2,
+  E: 4,
+  F: 5,
+  G: 7,
+  A: 9,
+  B: 11,
+};
+
+/** `/key(Bb3)` → published tonic name / pitch-class / MIDI. */
+export function parsePublishedKey(key: string): { tonicName: string; tonicPc: number; tonicMidi: number } {
+  const m = key.match(/\/key\(([A-G])([#b]?)(\d)\)/i);
+  if (!m) throw new Error(`unparseable published key: ${key}`);
+  const letter = m[1]!.toUpperCase();
+  const acc = m[2] ?? "";
+  const oct = Number(m[3]);
+  let pc = KEY_PC[letter] ?? 0;
+  if (acc === "#") pc = (pc + 1) % 12;
+  if (acc === "b") pc = (pc + 11) % 12;
+  return {
+    tonicName: `${letter}${acc}`,
+    tonicPc: pc,
+    tonicMidi: 12 * (oct + 1) + pc,
+  };
 }
 
 /** Drop `n` naturals so tokens match jianpuDegree output (`5`, not `n5`). */

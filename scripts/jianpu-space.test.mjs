@@ -23,8 +23,10 @@ import { POP_FULL_FIXTURES, fullPopById } from "../src/lib/melody/pop-full-fixtu
 import {
   normalizeLyricKey,
   parseJianpuText,
+  parsePublishedKey,
   tokenizeJianpuDegrees,
 } from "../src/lib/melody/jianpu-space.ts";
+import { NEW_POP_IDS } from "../src/lib/melody/pop-new-fixtures.ts";
 
 const GAOBAI_EXCERPT = `/key(B3)
 ｂｐｍ90.1
@@ -73,7 +75,7 @@ test("normalizeLyricKey strips (+1key) so a modulated chorus is not a second cop
   assert.equal(normalizeLyricKey('(+1key)天"青色等煙雨 而我在等妳'), normalizeLyricKey("天青色等煙雨 而我在等妳"));
 });
 
-test("POP_FULL_FIXTURES is the 11 pop songs; 昼回 is not in this set", () => {
+test("POP_FULL_FIXTURES is the 11 pop songs plus the new batch; 昼回 is not in this set", () => {
   assert.deepEqual(
     POP_FULL_FIXTURES.map((s) => s.id),
     [
@@ -88,9 +90,10 @@ test("POP_FULL_FIXTURES is the 11 pop songs; 昼回 is not in this set", () => {
       "buneng-shuo-de-mimi",
       "guyongzhe",
       "xiaoqingge",
+      ...NEW_POP_IDS,
     ],
   );
-  assert.ok(POP_FULL_FIXTURES.every((s) => s.publishedFullMovableDo.length >= 80));
+  assert.ok(POP_FULL_FIXTURES.every((s) => s.publishedFullMovableDo.length >= 70));
   assert.ok(POP_FULL_FIXTURES.every((s) => s.phrases.length >= 8));
   assert.ok(
     POP_FULL_FIXTURES.every(
@@ -126,6 +129,22 @@ test("first-line fixtures are prefixes of the full unique vocal (documented exce
   assert.ok(!prefixOf(houlai, HOULAI_PUBLISHED));
   const verseAt = houlai.findIndex((_, i) => HOULAI_PUBLISHED.every((d, j) => houlai[i + j] === d));
   assert.ok(verseAt > 0, "栀子花 line must appear after the printed chorus");
+
+  for (const id of NEW_POP_IDS) {
+    const full = fullPopById(id);
+    assert.ok(full, id);
+    assert.ok(full.phrases.length >= 8, id);
+    assert.equal(full.phrases[0].publishedMovableDo.length > 0, true, id);
+  }
+});
+
+test("parsePublishedKey reads /key letter, accidental, octave", () => {
+  assert.deepEqual(parsePublishedKey("/key(E3)"), { tonicName: "E", tonicPc: 4, tonicMidi: 52 });
+  assert.deepEqual(parsePublishedKey("/key(F3)"), { tonicName: "F", tonicPc: 5, tonicMidi: 53 });
+  assert.deepEqual(parsePublishedKey("/key(F#3)"), { tonicName: "F#", tonicPc: 6, tonicMidi: 54 });
+  assert.deepEqual(parsePublishedKey("/key(Ab3)"), { tonicName: "Ab", tonicPc: 8, tonicMidi: 56 });
+  assert.deepEqual(parsePublishedKey("/key(C4)"), { tonicName: "C", tonicPc: 0, tonicMidi: 60 });
+  assert.equal(parseJianpuText("/key(F3).\nbpm82\n3_5_\nL:會不會").key, "/key(F3)");
 });
 
 test("scorePhraseSet is local: an extra in phrase 0 does not shift phrase 1", () => {

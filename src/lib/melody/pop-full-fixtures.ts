@@ -4,6 +4,7 @@
  * Each lyric-cued line is one phrase. Decode and score phrase-by-phrase.
  * Do not treat 昼回 1+2 as the ruler for this set.
  */
+import { NEW_POP_FULL_FIXTURES } from "./pop-new-fixtures";
 export type FullPopSpan = "full-vocal-once" | "verse+chorus";
 
 export type FullPopPhrase = {
@@ -382,6 +383,7 @@ export const POP_FULL_FIXTURES: FullPopFixture[] = [
     phrases: XIAOQINGGE_PHRASES,
     publishedFullMovableDo: XIAOQINGGE_FULL,
   },
+  ...(NEW_POP_FULL_FIXTURES as FullPopFixture[]),
 ];
 
 export function fullPopById(id: string): FullPopFixture | undefined {

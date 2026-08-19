@@ -11,6 +11,18 @@
 import type { ScoreNote } from "./demo";
 import { HIRUMAWARI_OPENING_C, HIRUMAWARI_PHRASE2_C } from "./hirumawari-opening";
 import { cMajorDegrees, jianpuDegree } from "./leadsheet";
+import {
+  ANJING_PHRASES,
+  GANBEI_PHRASES,
+  GUANGNIAN_ZHIWAI_PHRASES,
+  KEXI_MEI_RUGUO_PHRASES,
+  KGE_ZHI_WANG_PHRASES,
+  NAXIENIAN_PHRASES,
+  PAOMO_PHRASES,
+  TURAN_HAO_XIANG_NI_PHRASES,
+  XIANGJIANNI_PHRASES,
+  YUJIAN_PHRASES,
+} from "./pop-new-fixtures";
 
 const MAJOR_SEMITONES = [0, 2, 4, 5, 7, 9, 11] as const;
 
@@ -94,13 +106,17 @@ export type PopPhraseFixture = {
   synthGap?: number;
 };
 
-const TONIC_B = 11;
-const TONIC_A = 9;
-const TONIC_GB = 6;
-const TONIC_BB = 10;
-const TONIC_EB = 3;
-const TONIC_G = 7;
+const TONIC_C = 0;
 const TONIC_D = 2;
+const TONIC_EB = 3;
+const TONIC_E = 4;
+const TONIC_F = 5;
+const TONIC_GB = 6;
+const TONIC_G = 7;
+const TONIC_AB = 8;
+const TONIC_A = 9;
+const TONIC_BB = 10;
+const TONIC_B = 11;
 
 export const GAOBAI_QIQU_PUBLISHED = ["1", "1", "7,", "1", "7,", "1", "7,", "1", "2"] as const;
 export const GAOBAI_QIQU_C = movableMajorToCFixed(GAOBAI_QIQU_PUBLISHED, TONIC_B);
@@ -147,6 +163,17 @@ export const GUYONGZHE_C = movableMajorToCFixed(GUYONGZHE_PUBLISHED, TONIC_B);
 
 /** 这是一首简单的小情歌 */
 export const XIAOQINGGE_PUBLISHED = ["1", "7,", "1", "7,", "1", "7,", "5,", "3,", "5,", "7,", "6"] as const;
+
+export const PAOMO_PUBLISHED = PAOMO_PHRASES[0].publishedMovableDo;
+export const NAXIENIAN_PUBLISHED = NAXIENIAN_PHRASES[0].publishedMovableDo;
+export const ANJING_PUBLISHED = ANJING_PHRASES[0].publishedMovableDo;
+export const YUJIAN_PUBLISHED = YUJIAN_PHRASES[0].publishedMovableDo;
+export const KEXI_MEI_RUGUO_PUBLISHED = KEXI_MEI_RUGUO_PHRASES[0].publishedMovableDo;
+export const GANBEI_PUBLISHED = GANBEI_PHRASES[0].publishedMovableDo;
+export const TURAN_HAO_XIANG_NI_PUBLISHED = TURAN_HAO_XIANG_NI_PHRASES[0].publishedMovableDo;
+export const GUANGNIAN_ZHIWAI_PUBLISHED = GUANGNIAN_ZHIWAI_PHRASES[0].publishedMovableDo;
+export const KGE_ZHI_WANG_PUBLISHED = KGE_ZHI_WANG_PHRASES[0].publishedMovableDo;
+export const XIANGJIANNI_PUBLISHED = XIANGJIANNI_PHRASES[0].publishedMovableDo;
 
 export const POP_PHRASE_FIXTURES: PopPhraseFixture[] = [
   {
@@ -314,6 +341,156 @@ export const POP_PHRASE_FIXTURES: PopPhraseFixture[] = [
     tonicMidi: 62,
     bpm: 66,
     publishedMovableDo: XIAOQINGGE_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "paomo",
+    title: "泡沫",
+    artist: "邓紫棋",
+    lyricCue: "阳光下的泡沫 是彩色的",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/68c6faf98989a2a93c94ae74",
+    publishedKey: "/key(E3)",
+    tonicName: "E",
+    tonicPc: TONIC_E,
+    tonicMidi: 52,
+    bpm: 68,
+    publishedMovableDo: PAOMO_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "naxienian",
+    title: "那些年",
+    artist: "胡夏",
+    lyricCue: "又回到最初的起点",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/654a62cfbbc8d3f848b6a70f",
+    publishedKey: "/key(F3)",
+    tonicName: "F",
+    tonicPc: TONIC_F,
+    tonicMidi: 53,
+    bpm: 79,
+    publishedMovableDo: NAXIENIAN_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "anjing",
+    title: "安静",
+    artist: "周杰伦",
+    lyricCue: "只剩下钢琴陪我弹了一天",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/65086cad90e1087b5a0c2c35",
+    publishedKey: "/key(Bb3)",
+    tonicName: "Bb",
+    tonicPc: TONIC_BB,
+    tonicMidi: 58,
+    bpm: 72,
+    publishedMovableDo: ANJING_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "yujian",
+    title: "遇见",
+    artist: "孙燕姿",
+    lyricCue: "听见 冬天 的离开",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/6472ad21a45093f82717628a",
+    publishedKey: "/key(Ab3)",
+    tonicName: "Ab",
+    tonicPc: TONIC_AB,
+    tonicMidi: 56,
+    bpm: 92,
+    publishedMovableDo: YUJIAN_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "kexi-mei-ruguo",
+    title: "可惜没如果",
+    artist: "林俊杰",
+    lyricCue: "假如把犯得起的错",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/65199ac390e1087b5a0c2c59",
+    publishedKey: "/key(C4)",
+    tonicName: "C",
+    tonicPc: TONIC_C,
+    tonicMidi: 60,
+    bpm: 80,
+    publishedMovableDo: KEXI_MEI_RUGUO_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "ganbei",
+    title: "干杯",
+    artist: "五月天",
+    lyricCue: "会不会 有一天 时间真的能倒退",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/641fc89d5bc3d689b97f538b",
+    publishedKey: "/key(F3)",
+    tonicName: "F",
+    tonicPc: TONIC_F,
+    tonicMidi: 53,
+    bpm: 82,
+    publishedMovableDo: GANBEI_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "turan-hao-xiang-ni",
+    title: "突然好想你",
+    artist: "五月天",
+    lyricCue: "最怕空气突然安静",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/87",
+    publishedKey: "/key(D3)",
+    tonicName: "D",
+    tonicPc: TONIC_D,
+    tonicMidi: 50,
+    bpm: 70,
+    publishedMovableDo: TURAN_HAO_XIANG_NI_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "guangnian-zhiwai",
+    title: "光年之外",
+    artist: "邓紫棋",
+    lyricCue: "感受停在我发端的指尖",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/64a59a633ec51ba7274d31f3",
+    publishedKey: "/key(E4)",
+    tonicName: "E",
+    tonicPc: TONIC_E,
+    tonicMidi: 64,
+    bpm: 88,
+    publishedMovableDo: GUANGNIAN_ZHIWAI_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "kge-zhi-wang",
+    title: "K歌之王",
+    artist: "陈奕迅",
+    lyricCue: "我以为要是唱得用心良苦",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/6623fc572cce837239c1fc68",
+    publishedKey: "/key(D3)",
+    tonicName: "D",
+    tonicPc: TONIC_D,
+    tonicMidi: 50,
+    bpm: 78,
+    publishedMovableDo: KGE_ZHI_WANG_PUBLISHED,
+    cMajorFixed: null,
+    liveAudio: null,
+  },
+  {
+    id: "xiangjianni",
+    title: "想见你想见你想见你",
+    artist: "八三夭",
+    lyricCue: "当爱情遗落成遗迹",
+    sourceUrl: "https://jianpu.space/zh-tw/songList/655b721f9b75b03cae7a9030",
+    publishedKey: "/key(F#3)",
+    tonicName: "F#",
+    tonicPc: TONIC_GB,
+    tonicMidi: 54,
+    bpm: 65,
+    publishedMovableDo: XIANGJIANNI_PUBLISHED,
     cMajorFixed: null,
     liveAudio: null,
   },
