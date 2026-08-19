@@ -47,6 +47,8 @@ const DEFAULTS = {
 
 const SING_LO = 58;
 const SING_HI = 81;
+const CORE_LO = 62;
+const CORE_HI = 76;
 
 /**
  * Fold a raw tuner MIDI into the singing band. Octave only — never a
@@ -67,6 +69,39 @@ export function foldSingingMidi(midi: number): { midi: number; folded: boolean }
   return { midi: m, folded };
 }
 
+/** Pitch class 0–11. B3 and B4 are the same singing degree. */
+export function singingPitchClass(midi: number): number {
+  return ((Math.round(midi) % 12) + 12) % 12;
+}
+
+export function sameSingingPc(a: number, b: number): boolean {
+  if (a <= 0 || b <= 0) return false;
+  return singingPitchClass(a) === singingPitchClass(b);
+}
+
+function addVote(votes: Map<number, number>, midi: number) {
+  votes.set(midi, (votes.get(midi) ?? 0) + 1);
+}
+
+function mergeVotes(into: Map<number, number>, from: Map<number, number>) {
+  for (const [midi, n] of from) into.set(midi, (into.get(midi) ?? 0) + n);
+}
+
+/** Prefer the in-band octave when YIN flips B3/B4 inside one syllable. */
+function pickBandMidi(votes: Map<number, number>, fallback: number): number {
+  let best = fallback;
+  let bestScore = -1;
+  for (const [midi, n] of votes) {
+    const band = midi >= CORE_LO && midi <= CORE_HI ? 3 : midi >= SING_LO && midi <= SING_HI ? 1 : 0;
+    const score = n + band;
+    if (score > bestScore) {
+      bestScore = score;
+      best = midi;
+    }
+  }
+  return best;
+}
+
 function localEnergyDip(frames: ContourFrame[], i: number, dipRatio: number): boolean {
   const rms = frames[i]!.rms;
   const prev = frames[Math.max(0, i - 3)]!.rms;
@@ -77,6 +112,7 @@ function localEnergyDip(frames: ContourFrame[], i: number, dipRatio: number): bo
 
 type Run = {
   midi: number;
+  pc: number;
   start: number;
   end: number;
   rms: number;
@@ -84,12 +120,18 @@ type Run = {
   n: number;
   folded: boolean;
   articulated: boolean;
+  votes: Map<number, number>;
 };
+
+function finalizeRun(r: Run): Run {
+  r.midi = pickBandMidi(r.votes, r.midi);
+  return r;
+}
 
 /**
  * Segment a raw (not wavelength-continued) contour into syllable onsets.
  * Same-pitch re-attacks stay separate when energy dips. Pitch-change splits
- * use the folded singing MIDI so octave flips do not invent extra notes.
+ * use singing pitch class, so B3/B4 flicker is one note, not two ghosts.
  */
 export function onsetsFromContour(
   frames: ContourFrame[],
@@ -113,7 +155,7 @@ export function onsetsFromContour(
     if (f.t < window.start - 0.02 || f.t >= window.end + 0.02) {
       if (cur) {
         cur.end = Math.min(cur.end, window.end);
-        runs.push(cur);
+        runs.push(finalizeRun(cur));
         cur = null;
       }
       if (unvoicedAt < 0) unvoicedAt = f.t;
@@ -124,26 +166,30 @@ export function onsetsFromContour(
     if (!voiced) {
       if (cur) {
         cur.end = f.t;
-        runs.push(cur);
+        runs.push(finalizeRun(cur));
         cur = null;
       }
       if (unvoicedAt < 0) unvoicedAt = f.t;
       continue;
     }
+    const pc = singingPitchClass(folded.midi);
     let pitchChange = false;
     let reattack = false;
     if (cur) {
-      pitchChange = cur.midi !== folded.midi;
+      pitchChange = cur.pc !== pc;
       reattack = !pitchChange && localEnergyDip(frames, i, dipRatio);
     }
     const restReattack: boolean = !cur && unvoicedAt >= 0 && f.t - unvoicedAt >= 0.055;
     if (!cur || pitchChange || reattack) {
       if (cur) {
         cur.end = f.t;
-        runs.push(cur);
+        runs.push(finalizeRun(cur));
       }
+      const votes = new Map<number, number>();
+      addVote(votes, folded.midi);
       cur = {
         midi: folded.midi,
+        pc,
         start: f.t,
         end: f.t + hop,
         rms: f.rms,
@@ -151,6 +197,7 @@ export function onsetsFromContour(
         n: 1,
         folded: folded.folded,
         articulated: reattack || restReattack,
+        votes,
       };
       unvoicedAt = -1;
     } else {
@@ -159,33 +206,48 @@ export function onsetsFromContour(
       cur.conf += f.conf;
       cur.n += 1;
       cur.folded = cur.folded || folded.folded;
+      addVote(cur.votes, folded.midi);
       unvoicedAt = -1;
     }
   }
-  if (cur) runs.push(cur);
+  if (cur) runs.push(finalizeRun(cur));
 
   const merged: Run[] = [];
   for (const r of runs) {
     const last = merged[merged.length - 1];
-    const tinyDropout = last && last.midi === r.midi && !r.articulated && r.start - last.end <= Math.min(0.045, mergeGap);
+    const tinyDropout =
+      last &&
+      last.pc === r.pc &&
+      !r.articulated &&
+      r.start - last.end <= Math.min(0.045, mergeGap);
     if (tinyDropout) {
       last.end = r.end;
       last.rms += r.rms;
       last.conf += r.conf;
       last.n += r.n;
       last.folded = last.folded || r.folded;
+      mergeVotes(last.votes, r.votes);
+      last.midi = pickBandMidi(last.votes, last.midi);
     } else {
-      merged.push({ ...r });
+      merged.push({
+        ...r,
+        votes: new Map(r.votes),
+      });
     }
   }
 
-  const onsets: PhraseOnset[] = [];
+  const durable: PhraseOnset[] = [];
+  const rejected: { r: Run; start: number; duration: number }[] = [];
   for (const r of merged) {
     const start = Math.max(window.start, r.start);
     if (start < window.start || start >= window.end) continue;
     const duration = Math.min(window.end, r.end) - start;
-    if (duration < minDur) continue;
-    const prev = onsets[onsets.length - 1];
+    // 0.089999 from hop float must still count as minDur (15.98 on 昼回 第三句).
+    if (duration + 0.005 < minDur) {
+      rejected.push({ r, start, duration });
+      continue;
+    }
+    const prev = durable[durable.length - 1];
     if (prev && start - prev.t < minIoI) {
       if (duration > prev.duration) {
         prev.t = start;
@@ -199,7 +261,7 @@ export function onsetsFromContour(
       }
       continue;
     }
-    onsets.push({
+    durable.push({
       t: start,
       duration,
       rms: r.rms / r.n,
@@ -208,6 +270,30 @@ export function onsetsFromContour(
       octaveFolded: r.folded,
     });
   }
+
+  // Isolated short pulses in a real gap (14.02 on 昼回 第三句). Not leading
+  // ghosts, not glide crumbs hugging the next attack, not low-rms leftovers.
+  const onsets = [...durable];
+  for (const { r, start, duration } of rejected) {
+    if (duration < 0.045 || r.rms / r.n < 0.12) continue;
+    let insertAt = onsets.findIndex((o) => o.t > start);
+    if (insertAt < 0) insertAt = onsets.length;
+    const prev = insertAt > 0 ? onsets[insertAt - 1] : undefined;
+    const next = onsets[insertAt];
+    if (!prev) continue;
+    if (next && next.t - start < 0.12) continue;
+    if (sameSingingPc(prev.midiHint, r.midi) && start - (prev.t + prev.duration) <= 0.045) continue;
+    if (prev && start - prev.t < minIoI - 0.01) continue;
+    onsets.splice(insertAt, 0, {
+      t: start,
+      duration,
+      rms: r.rms / r.n,
+      conf: r.conf / r.n,
+      midiHint: r.midi,
+      octaveFolded: r.folded,
+    });
+  }
+  onsets.sort((a, b) => a.t - b.t);
 
   for (let i = 0; i < onsets.length; i++) {
     const nextT = onsets[i + 1]?.t ?? window.end;
@@ -228,6 +314,8 @@ export function onsetsFromContour(
  * Check (in-repo dry vocal, do not invent pop MP3s):
  *   昼回 第一句 1.45–6.4s  → N close to 14  (`12323432712271`)
  *   昼回 第二句 7.55–12.0s → N close to 13  (`6711111751213`)
+ *   昼回 第三句 12.55–16.15s → N close to 14 (ear `12323632712231`;
+ *     stem f0 may still miss the 6 — do not hardcode that string)
  */
 export function countPhraseOnsets(
   samples: Float32Array,

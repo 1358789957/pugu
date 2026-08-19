@@ -128,9 +128,10 @@ export function fillUncertainPitches(
     const duration = n.rawDuration ?? n.duration;
     const hint = contourHint(frames, start, start + duration);
     const midi = hint.midi || n.midi;
+    // Octave fold is register, not a hole. A stable folded F# / G must
+    // keep its pitch class — do not let smoothness eat accidentals.
     const uncertain =
       hint.conf < 0.42 ||
-      hint.folded ||
       hint.midi <= 0 ||
       n.confidence < 0.4;
     return {

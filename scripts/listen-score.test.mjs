@@ -5,19 +5,41 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assignDisplayGrid } from "../src/lib/melody/display-grid.ts";
 import { degreeFill } from "../src/lib/melody/degree-colors.ts";
+import { cMajorDegrees } from "../src/lib/melody/leadsheet.ts";
 import {
+  HIRUMAWARI_AUDIO_TONIC,
   HIRUMAWARI_OPENING_C,
   HIRUMAWARI_PHRASE2_C,
   HIRUMAWARI_PHRASE2_END,
   HIRUMAWARI_PHRASE2_START,
+  HIRUMAWARI_PHRASE3_EAR_C,
+  HIRUMAWARI_PHRASE3_HYPOTHESIS,
   HIRUMAWARI_PHRASE_END,
   HIRUMAWARI_PHRASE_START,
 } from "../src/lib/melody/hirumawari-opening.ts";
 import { listenToScore } from "../src/lib/melody/listen-score.ts";
 import { notesToTicks } from "../src/lib/melody/midi.ts";
 import { fillUncertainPitches } from "../src/lib/melody/pitch-fill.ts";
-import { countPhraseOnsets } from "../src/lib/melody/phrase-onsets.ts";
+import { countPhraseOnsets, onsetsFromContour } from "../src/lib/melody/phrase-onsets.ts";
 import { readWavMono16 } from "./wav-pcm.mjs";
+
+function contourHold(t0, t1, midi, extra = {}) {
+  const frames = [];
+  for (let t = t0; t < t1; t += 0.01) {
+    frames.push({
+      t,
+      hz: 440,
+      periodSec: 0,
+      periodSamples: 0,
+      midi,
+      conf: extra.conf ?? 0.7,
+      rms: extra.rms ?? 0.15,
+      voiced: extra.voiced ?? true,
+      filled: false,
+    });
+  }
+  return frames;
+}
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VOCAL_WAV = join(root, "examples/hirumawari/昼回のメモリー-人声.wav");
@@ -124,6 +146,28 @@ test("MIDI ticks stay on raw onsets after display grid", () => {
   assert.ok(onSixteenth <= 2, `export must not hard-snap to 16ths, got ${onSixteenth}/${ticks.length}`);
 });
 
+test("B3/B4 octave flicker is one onset, not chopped ghosts", () => {
+  const frames = [];
+  for (let t = 0.2; t < 0.4; t += 0.01) {
+    frames.push(...contourHold(t, t + 0.01, t % 0.02 < 0.01 ? 71 : 59));
+  }
+  const got = onsetsFromContour(frames, { start: 0.18, end: 0.45 });
+  assert.equal(got.count, 1, `flicker count ${got.count}`);
+  assert.equal(got.onsets[0].midiHint, 71, `prefer in-band B4, got ${got.onsets[0].midiHint}`);
+});
+
+test("a loud short pulse in a real gap is counted", () => {
+  const frames = [
+    ...contourHold(0.2, 0.34, 67),
+    ...contourHold(0.34, 0.37, 0, { voiced: false, rms: 0.04, conf: 0 }),
+    ...contourHold(0.37, 0.42, 69, { rms: 0.18 }),
+    ...contourHold(0.42, 0.62, 0, { voiced: false, rms: 0.03, conf: 0 }),
+    ...contourHold(0.62, 0.78, 69),
+  ];
+  const got = onsetsFromContour(frames, { start: 0.18, end: 0.82 });
+  assert.equal(got.count, 3, `gap-pulse count ${got.count} at ${got.onsets.map((o) => o.t.toFixed(2)).join(" ")}`);
+});
+
 test("pitch fill keeps accidentals — no diatonic whitelist", () => {
   const notes = [
     { id: "a", midi: 64, start: 0, duration: 0.2, velocity: 0.7, confidence: 0.9, rawStart: 0, rawDuration: 0.2 },
@@ -147,7 +191,58 @@ test("pitch fill keeps accidentals — no diatonic whitelist", () => {
   assert.equal(filled[1].midi, 66, `F# must survive, got ${filled[1].midi}`);
 });
 
+test("pitch fill does not rewrite a stable folded accidental or 1", () => {
+  const fs = [];
+  for (let t = 0.2; t < 0.35; t += 0.01) {
+    fs.push({ t, hz: 185, periodSec: 1 / 185, periodSamples: 0, midi: 53.9, conf: 0.71, rms: 0.13, voiced: true, filled: false });
+  }
+  const kept = fillUncertainPitches(
+    [
+      { id: "a", midi: 67, start: 0, duration: 0.18, velocity: 0.7, confidence: 0.8, rawStart: 0, rawDuration: 0.18 },
+      { id: "b", midi: 66, start: 0.2, duration: 0.15, velocity: 0.7, confidence: 0.79, rawStart: 0.2, rawDuration: 0.15 },
+      { id: "c", midi: 67, start: 0.4, duration: 0.18, velocity: 0.7, confidence: 0.8, rawStart: 0.4, rawDuration: 0.18 },
+    ],
+    fs,
+    [{ start: 0, end: 1, section: "verse" }],
+  );
+  assert.equal(kept[1].midi, 66, `stable F# must stay, got ${kept[1].midi}`);
+});
+
 test("C=1 degree colors distinguish 1 from #4", () => {
   assert.notEqual(degreeFill(60), degreeFill(66));
   assert.notEqual(degreeFill(60), degreeFill(61));
+});
+
+test("昼回 第三句 listen count is close to 14; stem is not the ear string", (t) => {
+  if (!existsSync(VOCAL_WAV)) {
+    t.skip("examples/hirumawari vocal wav is not in this checkout");
+    return;
+  }
+  const { samples, sampleRate } = readWavMono16(VOCAL_WAV);
+  const w = { start: HIRUMAWARI_PHRASE3_HYPOTHESIS.start, end: HIRUMAWARI_PHRASE3_HYPOTHESIS.end };
+  const counted = countPhraseOnsets(samples, sampleRate, w);
+  const scored = listenToScore({ samples, sampleRate, phrases: [w], bpm: 117 });
+  const got = cMajorDegrees(
+    scored.notes.map((n) => n.midi),
+    HIRUMAWARI_AUDIO_TONIC,
+  );
+  const ear = HIRUMAWARI_PHRASE3_EAR_C.join("");
+  console.log(`第三句 onsets ${counted.count} listen ${scored.notes.length} want ${HIRUMAWARI_PHRASE3_EAR_C.length}`);
+  console.log(`第三句 listen ${got.join("")}`);
+  console.log(`第三句 ear    ${ear}`);
+  assert.ok(
+    Math.abs(counted.count - HIRUMAWARI_PHRASE3_EAR_C.length) <= 1,
+    `第三句 onset count ${counted.count} not close to 14`,
+  );
+  assert.ok(
+    Math.abs(scored.notes.length - HIRUMAWARI_PHRASE3_EAR_C.length) <= 1,
+    `第三句 listen count ${scored.notes.length} not close to 14`,
+  );
+  const around723 = scored.notes.find((n) => Math.abs((n.rawStart ?? n.start) - 15.23) < 0.08);
+  assert.ok(around723, "expected the 15.23 7");
+  assert.equal(cMajorDegrees([around723.midi], HIRUMAWARI_AUDIO_TONIC)[0], "7", "do not absorb the 7");
+  // Ear remains SoT. Do not lock decode to 12323632712231.
+  if (got.join("") !== ear) {
+    console.log("stem listen ≠ ear — mix reference stays 神's string, not a unit-test lock");
+  }
 });
