@@ -16,6 +16,8 @@ import {
   HIRUMAWARI_PHRASE_START,
   HIRUMAWARI_CHORUS_LYRIC,
   HIRUMAWARI_CHORUS_START_HYPOTHESIS,
+  HIRUMAWARI_PHRASE3_EAR_C,
+  HIRUMAWARI_PHRASE3_HYPOTHESIS,
   HIRUMAWARI_VERSE_HYPOTHESES,
 } from "../src/lib/melody/hirumawari-opening.ts";
 import { pickMelodyNotes, toPuguNotes } from "../src/lib/melody/basic-pitch-notes.ts";
@@ -115,6 +117,15 @@ test("hirumawari dry-vocal 第二句, transposed to C, is 6711111751213", async 
     secondC,
     [...HIRUMAWARI_PHRASE2_C],
     `C-major 固定调 第二句\n  got  ${secondC.join(" ")}\n  want ${HIRUMAWARI_PHRASE2_C.join(" ")}\n  G-audio ${second.inG.join(" ")}`,
+  );
+});
+
+test("第三句 ear string is 12323632712231 in C=1, not a decode lock", () => {
+  assert.equal(HIRUMAWARI_PHRASE3_EAR_C.join(""), "12323632712231");
+  assert.equal(HIRUMAWARI_PHRASE3_EAR_C.length, 14);
+  assert.deepEqual(
+    cMajorDegrees([...HIRUMAWARI_PHRASE3_HYPOTHESIS.concertMidi], HIRUMAWARI_AUDIO_TONIC),
+    [...HIRUMAWARI_PHRASE3_EAR_C],
   );
 });
 

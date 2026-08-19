@@ -48,8 +48,10 @@ export type HirumawariPhraseHypothesis = {
 
 /**
  * After 第二句 until the chorus lyric いつかまた同じ雨に.
- * These are HYPOTHESES from the dry-vocal contour path. Not ground truth.
- * The 词谱.txt note names are not used here (too coarse / wrong pitches).
+ * Phrase 3 ear string is 神's listen (C=1). Not a unit-test lock.
+ * Dry-vocal YIN agrees on the opening 12323 and the 7 at ~15.23s;
+ * it reads 13.89 as 1 (G, 194 Hz) not 6 (E), and the cadence as 11 2
+ * not 2231. Do not test decode against this. 词谱.txt pitches are wrong.
  */
 export const HIRUMAWARI_CHORUS_LYRIC = "いつかまた同じ雨に";
 export const HIRUMAWARI_CHORUS_START_HYPOTHESIS = 28.55;
@@ -57,16 +59,34 @@ export const HIRUMAWARI_CHORUS_START_HYPOTHESIS = 28.55;
 export const HIRUMAWARI_VERSE_DECODE_START = 12.0;
 export const HIRUMAWARI_VERSE_DECODE_END = 28.6;
 
+/** 神听的第三句 C=1：12323632712231。14 音，同句 1 骨架（4→6，尾 71→31）。 */
+export const HIRUMAWARI_PHRASE3_EAR_C = [
+  "1",
+  "2",
+  "3",
+  "2",
+  "3",
+  "6",
+  "3",
+  "2",
+  "7",
+  "1",
+  "2",
+  "2",
+  "3",
+  "1",
+] as const;
+
 export const HIRUMAWARI_PHRASE3_HYPOTHESIS: HirumawariPhraseHypothesis = {
   id: "hirumawari-3",
   label: "第三句",
   decodeStart: HIRUMAWARI_VERSE_DECODE_START,
-  decodeEnd: HIRUMAWARI_VERSE_DECODE_END,
-  start: 12.2,
-  end: 18.2,
+  decodeEnd: 16.2,
+  start: 12.55,
+  end: 16.15,
   lyricCue: "並んでた言えない",
-  cMajorFixed: ["3", "1", "2", "3", "2", "3", "6", "2", "3", "7", "7", "1", "7", "2", "2", "3", "1", "1", "7"],
-  concertMidi: [71, 67, 69, 71, 69, 71, 64, 69, 71, 66, 66, 67, 66, 69, 69, 71, 67, 67, 66],
+  cMajorFixed: HIRUMAWARI_PHRASE3_EAR_C,
+  concertMidi: [67, 69, 71, 69, 71, 64, 71, 69, 66, 67, 69, 69, 71, 67],
 };
 
 export const HIRUMAWARI_PHRASE4_HYPOTHESIS: HirumawariPhraseHypothesis = {
