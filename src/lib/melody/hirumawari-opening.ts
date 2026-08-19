@@ -48,10 +48,10 @@ export type HirumawariPhraseHypothesis = {
 
 /**
  * After 第二句 until the chorus lyric いつかまた同じ雨に.
- * Phrase 3 ear string is 神's listen (C=1). Not a unit-test lock.
- * Dry-vocal YIN agrees on the opening 12323 and the 7 at ~15.23s;
- * it reads 13.89 as 1 (G, 194 Hz) not 6 (E), and the cadence as 11 2
- * not 2231. Do not test decode against this. 词谱.txt pitches are wrong.
+ * Phrase 3 reference is 神's listen on the mix (C=1), not isolated-stem YIN.
+ * HPSS / dry-vocal f0 can drop the 6 and smear 2231 into a 1→2 glide —
+ * that is stem damage, not a correction of the ear. Do not let decode
+ * overwrite this string. 词谱.txt pitches are still wrong.
  */
 export const HIRUMAWARI_CHORUS_LYRIC = "いつかまた同じ雨に";
 export const HIRUMAWARI_CHORUS_START_HYPOTHESIS = 28.55;
@@ -59,7 +59,10 @@ export const HIRUMAWARI_CHORUS_START_HYPOTHESIS = 28.55;
 export const HIRUMAWARI_VERSE_DECODE_START = 12.0;
 export const HIRUMAWARI_VERSE_DECODE_END = 28.6;
 
-/** 神听的第三句 C=1：12323632712231。14 音，同句 1 骨架（4→6，尾 71→31）。 */
+/**
+ * 神听的第三句 C=1（混音）。比干声分离准。
+ * 14 音，同句 1 骨架：4→6，尾 71→31。
+ */
 export const HIRUMAWARI_PHRASE3_EAR_C = [
   "1",
   "2",

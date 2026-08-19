@@ -120,7 +120,7 @@ test("hirumawari dry-vocal 第二句, transposed to C, is 6711111751213", async 
   );
 });
 
-test("第三句 ear string is 12323632712231 in C=1, not a decode lock", () => {
+test("第三句 reference is 神's listen 12323632712231, not isolated-stem YIN", () => {
   assert.equal(HIRUMAWARI_PHRASE3_EAR_C.join(""), "12323632712231");
   assert.equal(HIRUMAWARI_PHRASE3_EAR_C.length, 14);
   assert.deepEqual(
